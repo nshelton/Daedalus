@@ -1,0 +1,14 @@
+{
+  "watch": [
+    "dist"
+  ],
+  "ext": "js",
+  "ignore": [
+    "dist/**/*.map"
+  ],
+  "exec": "electron . --dev",
+  "restartable": "rs",
+  "env": {
+    "NODE_ENV": "development"
+  }
+}
