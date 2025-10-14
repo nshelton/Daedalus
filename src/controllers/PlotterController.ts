@@ -17,6 +17,12 @@ export class PlotterController {
         this.updateUpDownDuration();
     }
 
+    async initialize(): Promise<void> {
+        // Configure servo positions on startup
+        await this.setPenUpValue(this.model.getPenUpPosition());
+        await this.setPenDownValue(this.model.getPenDownPosition());
+    }
+
     private setupSerialDataHandler(): void {
         this.serialController.onData((data: string) => {
             this.responseBuffer += data;
@@ -118,13 +124,13 @@ export class PlotterController {
 
     async setPenUpValue(val: number): Promise<void> {
         this.model.setPenUpPosition(Math.round(val));
-        await this.configureServo(4, Math.round(val)); // SC parameter 4 = servo min
+        await this.configureServo(5, Math.round(val)); // SC parameter 5 = pen up position
         this.updateUpDownDuration();
     }
 
     async setPenDownValue(val: number): Promise<void> {
         this.model.setPenDownPosition(Math.round(val));
-        await this.configureServo(5, Math.round(val)); // SC parameter 5 = servo max
+        await this.configureServo(4, Math.round(val)); // SC parameter 4 = pen down position
         this.updateUpDownDuration();
     }
 

@@ -52,6 +52,7 @@ export interface ElectronAPI {
   removeSerialDataListener: () => void;
 
   // Plotter operations
+  plotterInitialize: () => Promise<OperationResult>;
   plotterPenUp: () => Promise<OperationResult>;
   plotterPenDown: () => Promise<OperationResult>;
   plotterSetPenUpValue: (value: number) => Promise<OperationResult>;
@@ -89,6 +90,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Plotter operations
+  plotterInitialize: () => ipcRenderer.invoke('plotter-initialize'),
   plotterPenUp: () => ipcRenderer.invoke('plotter-pen-up'),
   plotterPenDown: () => ipcRenderer.invoke('plotter-pen-down'),
   plotterSetPenUpValue: (value: number) => ipcRenderer.invoke('plotter-set-pen-up-value', value),

@@ -1,12 +1,15 @@
 // DOM Elements
-const portSelect = document.getElementById('port-select') as HTMLSelectElement;
-const refreshPortsBtn = document.getElementById('refresh-ports') as HTMLButtonElement;
-const connectBtn = document.getElementById('connect-btn') as HTMLButtonElement;
-const baudRateSelect = document.getElementById('baud-rate') as HTMLSelectElement;
-const clearPlotBtn = document.getElementById('clear-plot') as HTMLButtonElement;
-const updateRateInput = document.getElementById('update-rate') as HTMLInputElement;
-const dataPointsInput = document.getElementById('data-points') as HTMLInputElement;
-const autoScrollCheckbox = document.getElementById('auto-scroll') as HTMLInputElement;
+const penUpBtn = document.getElementById('pen-up-btn') as HTMLButtonElement;
+const penDownBtn = document.getElementById('pen-down-btn') as HTMLButtonElement;
+const disengageBtn = document.getElementById('disengage-btn') as HTMLButtonElement;
+
+const penUpSlider = document.getElementById('pen-up-slider') as HTMLInputElement;
+const penDownSlider = document.getElementById('pen-down-slider') as HTMLInputElement;
+const speedSlider = document.getElementById('speed-slider') as HTMLInputElement;
+
+const penUpValue = document.getElementById('pen-up-value') as HTMLSpanElement;
+const penDownValue = document.getElementById('pen-down-value') as HTMLSpanElement;
+const speedValue = document.getElementById('speed-value') as HTMLSpanElement;
 
 const statusIndicator = document.querySelector('.status-indicator') as HTMLElement;
 const statusText = document.querySelector('.status-text') as HTMLElement;
@@ -28,67 +31,125 @@ let sampleCount: number = 0;
 // Initialize the application
 async function init(): Promise<void> {
     setupEventListeners();
-    await refreshPorts();
     await autoConnectPlotter();
-    console.log('USB Serial Plotter initialized');
+    console.log('Plotter interface initialized');
 }
 
 // Setup event listeners
 function setupEventListeners(): void {
-    refreshPortsBtn.addEventListener('click', refreshPorts);
-    connectBtn.addEventListener('click', toggleConnection);
-    clearPlotBtn.addEventListener('click', clearPlot);
+    // Plotter control buttons
+    penUpBtn.addEventListener('click', handlePenUp);
+    penDownBtn.addEventListener('click', handlePenDown);
+    disengageBtn.addEventListener('click', handleDisengage);
 
-    portSelect.addEventListener('change', (e) => {
-        selectedPort = (e.target as HTMLSelectElement).value;
+    // Slider listeners
+    penUpSlider.addEventListener('input', (e) => {
+        const value = (e.target as HTMLInputElement).value;
+        penUpValue.textContent = value;
     });
 
-    // Settings change listeners
-    updateRateInput.addEventListener('change', (e) => {
-        console.log('Update rate changed to:', (e.target as HTMLInputElement).value);
+    penUpSlider.addEventListener('change', async (e) => {
+        const value = parseInt((e.target as HTMLInputElement).value);
+        await handleSetPenUpPosition(value);
     });
 
-    dataPointsInput.addEventListener('change', (e) => {
-        console.log('Max data points changed to:', (e.target as HTMLInputElement).value);
+    penDownSlider.addEventListener('input', (e) => {
+        const value = (e.target as HTMLInputElement).value;
+        penDownValue.textContent = value;
     });
 
-    autoScrollCheckbox.addEventListener('change', (e) => {
-        console.log('Auto scroll:', (e.target as HTMLInputElement).checked);
+    penDownSlider.addEventListener('change', async (e) => {
+        const value = parseInt((e.target as HTMLInputElement).value);
+        await handleSetPenDownPosition(value);
+    });
+
+    speedSlider.addEventListener('input', (e) => {
+        const value = (e.target as HTMLInputElement).value;
+        speedValue.textContent = value;
+    });
+
+    speedSlider.addEventListener('change', async (e) => {
+        const value = parseInt((e.target as HTMLInputElement).value);
+        await handleSetSpeed(value);
     });
 
     // Listen for serial data
     window.electronAPI.onSerialData(handleSerialData);
 }
 
-// Refresh available serial ports
-async function refreshPorts(): Promise<void> {
+// Plotter Control Functions
+async function handlePenUp(): Promise<void> {
     try {
-        refreshPortsBtn.disabled = true;
-        refreshPortsBtn.textContent = 'Loading...';
-
-        const ports = await window.electronAPI.getSerialPorts();
-
-        portSelect.innerHTML = '';
-
-        if (ports.length === 0) {
-            portSelect.innerHTML = '<option value="">No ports found</option>';
-        } else {
-            ports.forEach(port => {
-                const option = document.createElement('option');
-                option.value = port.path;
-                option.textContent = `${port.path}${port.manufacturer ? ` (${port.manufacturer})` : ''}`;
-                portSelect.appendChild(option);
-            });
-            selectedPort = ports[0].path;
+        penUpBtn.disabled = true;
+        const result = await window.electronAPI.plotterPenUp();
+        if (!result.success) {
+            console.error('Pen up failed:', result.error);
         }
-
-        refreshPortsBtn.textContent = 'Refresh';
-        refreshPortsBtn.disabled = false;
     } catch (error) {
-        console.error('Error refreshing ports:', error);
-        portSelect.innerHTML = '<option value="">Error loading ports</option>';
-        refreshPortsBtn.textContent = 'Refresh';
-        refreshPortsBtn.disabled = false;
+        console.error('Error sending pen up:', error);
+    } finally {
+        penUpBtn.disabled = false;
+    }
+}
+
+async function handlePenDown(): Promise<void> {
+    try {
+        penDownBtn.disabled = true;
+        const result = await window.electronAPI.plotterPenDown();
+        if (!result.success) {
+            console.error('Pen down failed:', result.error);
+        }
+    } catch (error) {
+        console.error('Error sending pen down:', error);
+    } finally {
+        penDownBtn.disabled = false;
+    }
+}
+
+async function handleDisengage(): Promise<void> {
+    try {
+        disengageBtn.disabled = true;
+        const result = await window.electronAPI.plotterDisengage();
+        if (!result.success) {
+            console.error('Disengage failed:', result.error);
+        }
+    } catch (error) {
+        console.error('Error disengaging motors:', error);
+    } finally {
+        disengageBtn.disabled = false;
+    }
+}
+
+async function handleSetPenUpPosition(value: number): Promise<void> {
+    try {
+        const result = await window.electronAPI.plotterSetPenUpValue(value);
+        if (!result.success) {
+            console.error('Set pen up position failed:', result.error);
+        }
+    } catch (error) {
+        console.error('Error setting pen up position:', error);
+    }
+}
+
+async function handleSetPenDownPosition(value: number): Promise<void> {
+    try {
+        const result = await window.electronAPI.plotterSetPenDownValue(value);
+        if (!result.success) {
+            console.error('Set pen down position failed:', result.error);
+        }
+    } catch (error) {
+        console.error('Error setting pen down position:', error);
+    }
+}
+
+async function handleSetSpeed(value: number): Promise<void> {
+    try {
+        const result = await window.electronAPI.plotterSetSpeed(value);
+        if (!result.success) {
+            console.error('Set speed failed:', result.error);
+        }
+    } catch (error) {
+        console.error('Error setting speed:', error);
     }
 }
 
@@ -102,90 +163,56 @@ async function autoConnectPlotter(): Promise<void> {
 
         if (plotterPort) {
             console.log('Found plotter port:', plotterPort.path);
-            selectedPort = plotterPort.path;
 
-            // Update port select to show the found port
-            const option = Array.from(portSelect.options).find(opt => opt.value === plotterPort.path);
-            if (option) {
-                portSelect.value = plotterPort.path;
+            const result = await window.electronAPI.connectSerial(plotterPort.path, 115200);
+
+            if (result.success) {
+                isConnected = true;
+                updateConnectionStatus(true, `Connected (${plotterPort.path})`);
+                console.log('Connected to plotter:', plotterPort.path);
+
+                // Initialize plotter with servo settings
+                await initializePlotter();
+            } else {
+                console.error('Connection failed:', result.error);
+                updateConnectionStatus(false, 'Connection Failed');
             }
-
-            await connect();
         } else {
             console.log('No plotter port found');
-            updateConnectionStatus(false, 'Disconnected');
+            updateConnectionStatus(false, 'No Plotter Found');
         }
     } catch (error) {
         console.error('Auto-connect failed:', error);
-        updateConnectionStatus(false, 'Disconnected');
+        updateConnectionStatus(false, 'Error');
     }
 }
 
-// Toggle serial connection
-async function toggleConnection(): Promise<void> {
-    if (isConnected) {
-        await disconnect();
-    } else {
-        await connect();
-    }
-}
-
-// Connect to serial port
-async function connect(): Promise<void> {
-    if (!selectedPort) {
-        console.error('No port selected');
-        return;
-    }
-
+// Initialize plotter with current slider values
+async function initializePlotter(): Promise<void> {
     try {
-        connectBtn.disabled = true;
-        connectBtn.textContent = 'Connecting...';
-        updateConnectionStatus(false, 'Connecting...');
+        // Get current plotter state
+        const state = await window.electronAPI.plotterGetState();
 
-        const baudRate = parseInt(baudRateSelect.value);
-        const result = await window.electronAPI.connectSerial(selectedPort, baudRate);
+        // Update sliders to match plotter state
+        penUpSlider.value = state.penUpPosition.toString();
+        penUpValue.textContent = state.penUpPosition.toString();
+
+        penDownSlider.value = state.penDownPosition.toString();
+        penDownValue.textContent = state.penDownPosition.toString();
+
+        speedSlider.value = state.speed.toString();
+        speedValue.textContent = state.speed.toString();
+
+        // Send initialization commands to plotter
+        const result = await window.electronAPI.plotterInitialize();
 
         if (result.success) {
-            isConnected = true;
-            connectBtn.textContent = 'Disconnect';
-            updateConnectionStatus(true, `Connected (${selectedPort})`);
-            portSelect.disabled = true;
-            baudRateSelect.disabled = true;
-            console.log('Connected to', selectedPort);
+            console.log('Plotter initialized successfully');
         } else {
-            console.error('Connection failed:', result.error);
-            updateConnectionStatus(false, 'Connection Failed');
-            connectBtn.textContent = 'Connect';
+            console.error('Plotter initialization failed:', result.error);
         }
     } catch (error) {
-        console.error('Error connecting:', error);
-        updateConnectionStatus(false, 'Error');
-        connectBtn.textContent = 'Connect';
-    } finally {
-        connectBtn.disabled = false;
-    }
-}
-
-// Disconnect from serial port
-async function disconnect(): Promise<void> {
-    try {
-        connectBtn.disabled = true;
-        connectBtn.textContent = 'Disconnecting...';
-        updateConnectionStatus(false, 'Disconnecting...');
-
-        await window.electronAPI.disconnectSerial();
-
-        isConnected = false;
-        connectBtn.textContent = 'Connect';
-        updateConnectionStatus(false, 'Disconnected');
-        portSelect.disabled = false;
-        baudRateSelect.disabled = false;
-        console.log('Disconnected');
-    } catch (error) {
-        console.error('Error disconnecting:', error);
-        connectBtn.textContent = 'Disconnect';
-    } finally {
-        connectBtn.disabled = false;
+        console.error('Error initializing plotter:', error);
     }
 }
 
@@ -236,8 +263,8 @@ function handleSerialData(data: any): void {
     }
 }
 
-// Clear the plot
-function clearPlot(): void {
+// Clear data buffers
+function clearData(): void {
     dataBuffer = [];
     totalBytesReceived = 0;
     sampleCount = 0;
@@ -247,7 +274,7 @@ function clearPlot(): void {
     sampleRateSpan.textContent = '0 Hz';
     lastValueSpan.textContent = '—';
 
-    console.log('Plot cleared');
+    console.log('Data cleared');
 }
 
 // Initialize when DOM is ready

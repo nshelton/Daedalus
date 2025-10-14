@@ -26,6 +26,42 @@ const serialController = new SerialController(serialModel);
 const plotterModel = new PlotterModel();
 const plotterController = new PlotterController(plotterModel, serialController);
 
+interface PlotterSettings {
+  penUpPosition: number;
+  penDownPosition: number;
+  speed: number;
+}
+
+function getPlotterSettingsFile(): string {
+  return path.join(app.getPath('userData'), 'plotter-settings.json');
+}
+
+function loadPlotterSettings(): PlotterSettings | null {
+  try {
+    const data = fs.readFileSync(getPlotterSettingsFile(), 'utf8');
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
+}
+
+function savePlotterSettings(): void {
+  const settings: PlotterSettings = {
+    penUpPosition: plotterModel.getPenUpPosition(),
+    penDownPosition: plotterModel.getPenDownPosition(),
+    speed: plotterModel.getSpeed()
+  };
+  fs.writeFileSync(getPlotterSettingsFile(), JSON.stringify(settings, null, 2));
+}
+
+// Load plotter settings on startup
+const savedSettings = loadPlotterSettings();
+if (savedSettings) {
+  plotterModel.setPenUpPosition(savedSettings.penUpPosition);
+  plotterModel.setPenDownPosition(savedSettings.penDownPosition);
+  plotterModel.setSpeed(savedSettings.speed);
+}
+
 interface WindowState {
   x?: number;
   y?: number;
@@ -220,6 +256,7 @@ ipcMain.handle('plotter-pen-down', async () => {
 ipcMain.handle('plotter-set-pen-up-value', async (_event, value: number) => {
   try {
     await plotterController.setPenUpValue(value);
+    savePlotterSettings();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Set pen up value failed';
@@ -230,6 +267,7 @@ ipcMain.handle('plotter-set-pen-up-value', async (_event, value: number) => {
 ipcMain.handle('plotter-set-pen-down-value', async (_event, value: number) => {
   try {
     await plotterController.setPenDownValue(value);
+    savePlotterSettings();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Set pen down value failed';
@@ -240,6 +278,7 @@ ipcMain.handle('plotter-set-pen-down-value', async (_event, value: number) => {
 ipcMain.handle('plotter-set-speed', async (_event, value: number) => {
   try {
     plotterController.setSpeedValue(value);
+    savePlotterSettings();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Set speed failed';
@@ -327,6 +366,16 @@ ipcMain.handle('plotter-reset', async () => {
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Reset failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-initialize', async () => {
+  try {
+    await plotterController.initialize();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Initialize failed';
     return { success: false, error: errorMsg };
   }
 });
