@@ -1,5 +1,10 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
+import { SerialModel } from './models/SerialModel';
+import { SerialController } from './controllers/SerialController';
+import { PlotterModel } from './models/PlotterModel';
+import { PlotterController } from './controllers/PlotterController';
 
 // Enable hot reload in development
 if (process.argv.includes('--dev')) {
@@ -15,10 +20,53 @@ if (process.argv.includes('--dev')) {
 
 let mainWindow: BrowserWindow | null;
 
+// Initialize serial and plotter controllers
+const serialModel = new SerialModel();
+const serialController = new SerialController(serialModel);
+const plotterModel = new PlotterModel();
+const plotterController = new PlotterController(plotterModel, serialController);
+
+interface WindowState {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+  isMaximized?: boolean;
+}
+
+function getWindowStateFile(): string {
+  return path.join(app.getPath('userData'), 'window-state.json');
+}
+
+function loadWindowState(): WindowState {
+  try {
+    const data = fs.readFileSync(getWindowStateFile(), 'utf8');
+    return JSON.parse(data);
+  } catch {
+    return { width: 1200, height: 800 };
+  }
+}
+
+function saveWindowState(window: BrowserWindow): void {
+  const bounds = window.getBounds();
+  const state: WindowState = {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    isMaximized: window.isMaximized()
+  };
+  fs.writeFileSync(getWindowStateFile(), JSON.stringify(state));
+}
+
 function createWindow(): void {
+  const state = loadWindowState();
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    x: state.x,
+    y: state.y,
+    width: state.width,
+    height: state.height,
     minWidth: 800,
     minHeight: 600,
     backgroundColor: '#1e1e1e',
@@ -32,11 +80,34 @@ function createWindow(): void {
     title: 'USB Serial Plotter'
   });
 
+  if (state.isMaximized) {
+    mainWindow.maximize();
+  }
+
   mainWindow.loadFile('index.html');
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+  });
+
+  // Save window state on move/resize
+  mainWindow.on('resize', () => {
+    if (mainWindow && !mainWindow.isMaximized()) {
+      saveWindowState(mainWindow);
+    }
+  });
+
+  mainWindow.on('move', () => {
+    if (mainWindow && !mainWindow.isMaximized()) {
+      saveWindowState(mainWindow);
+    }
+  });
+
+  mainWindow.on('close', () => {
+    if (mainWindow) {
+      saveWindowState(mainWindow);
+    }
   });
 
   // Open DevTools in development mode
@@ -68,23 +139,195 @@ app.on('window-all-closed', () => {
   }
 });
 
-// IPC handlers will be added here for serial port communication
+// Serial port IPC handlers
 ipcMain.handle('get-serial-ports', async () => {
-  // Placeholder for serial port enumeration
-  return [];
+  try {
+    const ports = await serialController.listPorts();
+    return ports;
+  } catch (error) {
+    console.error('Error listing ports:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('find-plotter-port', async () => {
+  try {
+    const port = await serialController.findPlotterPort();
+    return port || null;
+  } catch (error) {
+    console.error('Error finding plotter port:', error);
+    return null;
+  }
 });
 
 interface SerialConnectionResult {
   success: boolean;
+  error?: string;
 }
 
-ipcMain.handle('connect-serial', async (_event, _portPath: string, _baudRate: number): Promise<SerialConnectionResult> => {
-  // Placeholder for serial port connection
-  return { success: true };
+ipcMain.handle('connect-serial', async (_event, portPath: string, baudRate: number = 115200): Promise<SerialConnectionResult> => {
+  try {
+    await serialController.connect(portPath, baudRate);
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Connection failed';
+    return { success: false, error: errorMsg };
+  }
 });
 
 ipcMain.handle('disconnect-serial', async (): Promise<SerialConnectionResult> => {
-  // Placeholder for serial port disconnection
-  return { success: true };
+  try {
+    await serialController.disconnect();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Disconnection failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('get-serial-state', async () => {
+  return serialModel.getState();
+});
+
+// Handle serial data streaming to renderer
+serialController.onData((data: string) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('serial-data', data);
+  }
+});
+
+// Plotter IPC handlers
+ipcMain.handle('plotter-pen-up', async () => {
+  try {
+    await plotterController.penUp();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Pen up failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-pen-down', async () => {
+  try {
+    await plotterController.penDown();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Pen down failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-set-pen-up-value', async (_event, value: number) => {
+  try {
+    await plotterController.setPenUpValue(value);
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Set pen up value failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-set-pen-down-value', async (_event, value: number) => {
+  try {
+    await plotterController.setPenDownValue(value);
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Set pen down value failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-set-speed', async (_event, value: number) => {
+  try {
+    plotterController.setSpeedValue(value);
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Set speed failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-plot-path', async (_event, paths: [number, number][][], doLift: boolean = true) => {
+  try {
+    plotterController.plotPath(paths, doLift);
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Plot path failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-move-to', async (_event, position: [number, number]) => {
+  try {
+    plotterController.moveTo(position);
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Move to failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-pause', async () => {
+  try {
+    plotterController.pause();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Pause failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-resume', async () => {
+  try {
+    plotterController.resume();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Resume failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-disengage', async () => {
+  try {
+    await plotterController.disengage();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Disengage failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-start-queue', async () => {
+  try {
+    plotterController.startQueueConsumption();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Start queue failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-stop-queue', async () => {
+  try {
+    plotterController.stopQueueConsumption();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Stop queue failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-get-state', async () => {
+  return plotterModel.getState();
+});
+
+ipcMain.handle('plotter-reset', async () => {
+  try {
+    plotterModel.reset();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Reset failed';
+    return { success: false, error: errorMsg };
+  }
 });
 

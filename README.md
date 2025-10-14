@@ -147,12 +147,48 @@ The hot reload system:
 - Improved code maintainability
 - Self-documenting code with type annotations
 
+## Development Plan 📋
+
+This project has a comprehensive development plan to transform it into a sophisticated SVG plotting application with MVC architecture. See the following documents:
+
+### Planning Documents
+
+- **[GETTING_STARTED.md](GETTING_STARTED.md)** - **Start here!** Quick start guide and development workflow
+- **[DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)** - Complete 8-phase development plan with architecture and class designs
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Visual diagrams, data flow examples, and component interactions
+- **[IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md)** - Granular task checklist (~200+ tasks) for tracking progress
+- **[SVG_PROTOCOL.md](SVG_PROTOCOL.md)** - Serial protocol specification for SVG rendering commands
+
+### Planned Features
+
+The development plan includes:
+- ✨ **SVG Rendering** - Render large, complex SVGs with draggable/resizable elements
+- 🔍 **Pan & Zoom** - Smooth viewport navigation with mouse/keyboard controls
+- 🎯 **Interactive Elements** - Click, drag, resize SVG shapes in real-time
+- 📡 **Serial Protocol** - Text-based protocol for drawing commands (CIRCLE, PATH, etc.)
+- 🏗️ **MVC Architecture** - Clean separation: Models (state), Views (rendering), Controllers (logic)
+- 🧪 **Test Patterns** - Auto-generate circle, noise, and sine wave patterns
+- ⚡ **Auto-connect** - Automatically connect to serial port on launch
+- 🎨 **Grid System** - Optional grid overlay for alignment
+- 📊 **Real-time Updates** - Stream SVG commands from serial devices
+
+### Architecture Overview
+
+```
+Main Process:  SerialDriver → SerialController → SerialModel
+                     ↓ (IPC)
+Renderer:      PlotView ← PlotController → PlotModel
+```
+
+**Get started:** Read [GETTING_STARTED.md](GETTING_STARTED.md) for the complete development workflow.
+
 ## Next Steps
 
-This is a boilerplate application with placeholders for:
-- Actual plotting implementation (consider using Chart.js, Plotly.js, or canvas-based plotting)
-- Serial port data parsing logic (customize based on your device's data format)
-- Additional features like data logging, export, etc.
+To implement the new features:
+1. Review the planning documents (see above)
+2. Follow the 8-phase implementation plan
+3. Use the checklist to track progress
+4. Reference the architecture diagrams as needed
 
 ## Dependencies
 

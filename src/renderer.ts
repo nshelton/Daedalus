@@ -1,8 +1,8 @@
 // DOM Elements
 const portSelect = document.getElementById('port-select') as HTMLSelectElement;
 const refreshPortsBtn = document.getElementById('refresh-ports') as HTMLButtonElement;
-const baudRateSelect = document.getElementById('baud-rate') as HTMLSelectElement;
 const connectBtn = document.getElementById('connect-btn') as HTMLButtonElement;
+const baudRateSelect = document.getElementById('baud-rate') as HTMLSelectElement;
 const clearPlotBtn = document.getElementById('clear-plot') as HTMLButtonElement;
 const updateRateInput = document.getElementById('update-rate') as HTMLInputElement;
 const dataPointsInput = document.getElementById('data-points') as HTMLInputElement;
@@ -27,8 +27,9 @@ let sampleCount: number = 0;
 
 // Initialize the application
 async function init(): Promise<void> {
-    await refreshPorts();
     setupEventListeners();
+    await refreshPorts();
+    await autoConnectPlotter();
     console.log('USB Serial Plotter initialized');
 }
 
@@ -37,7 +38,7 @@ function setupEventListeners(): void {
     refreshPortsBtn.addEventListener('click', refreshPorts);
     connectBtn.addEventListener('click', toggleConnection);
     clearPlotBtn.addEventListener('click', clearPlot);
-    
+
     portSelect.addEventListener('change', (e) => {
         selectedPort = (e.target as HTMLSelectElement).value;
     });
@@ -54,41 +55,69 @@ function setupEventListeners(): void {
     autoScrollCheckbox.addEventListener('change', (e) => {
         console.log('Auto scroll:', (e.target as HTMLInputElement).checked);
     });
+
+    // Listen for serial data
+    window.electronAPI.onSerialData(handleSerialData);
 }
 
 // Refresh available serial ports
 async function refreshPorts(): Promise<void> {
     try {
         refreshPortsBtn.disabled = true;
-        refreshPortsBtn.textContent = 'Refreshing...';
-        
+        refreshPortsBtn.textContent = 'Loading...';
+
         const ports = await window.electronAPI.getSerialPorts();
-        
+
         portSelect.innerHTML = '';
-        
+
         if (ports.length === 0) {
-            portSelect.innerHTML = '<option value="">No ports available</option>';
+            portSelect.innerHTML = '<option value="">No ports found</option>';
         } else {
             ports.forEach(port => {
                 const option = document.createElement('option');
                 option.value = port.path;
-                option.textContent = `${port.path}${port.manufacturer ? ' - ' + port.manufacturer : ''}`;
+                option.textContent = `${port.path}${port.manufacturer ? ` (${port.manufacturer})` : ''}`;
                 portSelect.appendChild(option);
             });
             selectedPort = ports[0].path;
         }
-        
+
+        refreshPortsBtn.textContent = 'Refresh';
         refreshPortsBtn.disabled = false;
-        refreshPortsBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-            Refresh
-        `;
     } catch (error) {
         console.error('Error refreshing ports:', error);
         portSelect.innerHTML = '<option value="">Error loading ports</option>';
+        refreshPortsBtn.textContent = 'Refresh';
         refreshPortsBtn.disabled = false;
+    }
+}
+
+// Auto-connect to plotter on startup
+async function autoConnectPlotter(): Promise<void> {
+    try {
+        console.log('Attempting to auto-connect to plotter...');
+        updateConnectionStatus(false, 'Searching...');
+
+        const plotterPort = await window.electronAPI.findPlotterPort();
+
+        if (plotterPort) {
+            console.log('Found plotter port:', plotterPort.path);
+            selectedPort = plotterPort.path;
+
+            // Update port select to show the found port
+            const option = Array.from(portSelect.options).find(opt => opt.value === plotterPort.path);
+            if (option) {
+                portSelect.value = plotterPort.path;
+            }
+
+            await connect();
+        } else {
+            console.log('No plotter port found');
+            updateConnectionStatus(false, 'Disconnected');
+        }
+    } catch (error) {
+        console.error('Auto-connect failed:', error);
+        updateConnectionStatus(false, 'Disconnected');
     }
 }
 
@@ -104,47 +133,36 @@ async function toggleConnection(): Promise<void> {
 // Connect to serial port
 async function connect(): Promise<void> {
     if (!selectedPort) {
-        alert('Please select a serial port');
+        console.error('No port selected');
         return;
     }
 
     try {
         connectBtn.disabled = true;
         connectBtn.textContent = 'Connecting...';
-        
+        updateConnectionStatus(false, 'Connecting...');
+
         const baudRate = parseInt(baudRateSelect.value);
         const result = await window.electronAPI.connectSerial(selectedPort, baudRate);
-        
+
         if (result.success) {
             isConnected = true;
-            updateConnectionStatus(true);
             connectBtn.textContent = 'Disconnect';
-            connectBtn.classList.remove('btn-primary');
-            connectBtn.classList.add('btn-secondary');
-            
-            // Disable port selection while connected
+            updateConnectionStatus(true, `Connected (${selectedPort})`);
             portSelect.disabled = true;
             baudRateSelect.disabled = true;
-            refreshPortsBtn.disabled = true;
-            
-            // Show plot canvas
-            plotPlaceholder.style.display = 'none';
-            plotCanvas.classList.add('active');
-            
-            // Setup data listener
-            window.electronAPI.onSerialData(handleSerialData);
-            
-            console.log(`Connected to ${selectedPort} at ${baudRate} baud`);
+            console.log('Connected to', selectedPort);
         } else {
-            throw new Error('Connection failed');
+            console.error('Connection failed:', result.error);
+            updateConnectionStatus(false, 'Connection Failed');
+            connectBtn.textContent = 'Connect';
         }
-        
-        connectBtn.disabled = false;
     } catch (error) {
         console.error('Error connecting:', error);
-        alert('Failed to connect to serial port');
-        connectBtn.disabled = false;
+        updateConnectionStatus(false, 'Error');
         connectBtn.textContent = 'Connect';
+    } finally {
+        connectBtn.disabled = false;
     }
 }
 
@@ -153,48 +171,34 @@ async function disconnect(): Promise<void> {
     try {
         connectBtn.disabled = true;
         connectBtn.textContent = 'Disconnecting...';
-        
-        const result = await window.electronAPI.disconnectSerial();
-        
-        if (result.success) {
-            isConnected = false;
-            updateConnectionStatus(false);
-            connectBtn.textContent = 'Connect';
-            connectBtn.classList.remove('btn-secondary');
-            connectBtn.classList.add('btn-primary');
-            
-            // Enable port selection
-            portSelect.disabled = false;
-            baudRateSelect.disabled = false;
-            refreshPortsBtn.disabled = false;
-            
-            // Hide plot canvas
-            plotCanvas.classList.remove('active');
-            plotPlaceholder.style.display = 'flex';
-            
-            // Remove data listener
-            window.electronAPI.removeSerialDataListener();
-            
-            console.log('Disconnected from serial port');
-        }
-        
-        connectBtn.disabled = false;
+        updateConnectionStatus(false, 'Disconnecting...');
+
+        await window.electronAPI.disconnectSerial();
+
+        isConnected = false;
+        connectBtn.textContent = 'Connect';
+        updateConnectionStatus(false, 'Disconnected');
+        portSelect.disabled = false;
+        baudRateSelect.disabled = false;
+        console.log('Disconnected');
     } catch (error) {
         console.error('Error disconnecting:', error);
+        connectBtn.textContent = 'Disconnect';
+    } finally {
         connectBtn.disabled = false;
     }
 }
 
 // Update connection status display
-function updateConnectionStatus(connected: boolean): void {
+function updateConnectionStatus(connected: boolean, text?: string): void {
     if (connected) {
         statusIndicator.classList.remove('disconnected');
         statusIndicator.classList.add('connected');
-        statusText.textContent = 'Connected';
+        statusText.textContent = text || 'Connected';
     } else {
         statusIndicator.classList.remove('connected');
         statusIndicator.classList.add('disconnected');
-        statusText.textContent = 'Disconnected';
+        statusText.textContent = text || 'Disconnected';
     }
 }
 
@@ -202,7 +206,7 @@ function updateConnectionStatus(connected: boolean): void {
 function handleSerialData(data: any): void {
     totalBytesReceived += data.length;
     dataReceivedSpan.textContent = `${totalBytesReceived} bytes`;
-    
+
     // Update sample rate
     sampleCount++;
     const now = Date.now();
@@ -213,14 +217,14 @@ function handleSerialData(data: any): void {
         sampleCount = 0;
         lastSampleTime = now;
     }
-    
+
     // Parse and store data (placeholder for actual plotting logic)
     try {
         const value = parseFloat(data.toString().trim());
         if (!isNaN(value)) {
             lastValueSpan.textContent = value.toFixed(2);
             dataBuffer.push(value);
-            
+
             // Limit buffer size
             const maxPoints = parseInt(dataPointsInput.value);
             if (dataBuffer.length > maxPoints) {
@@ -238,11 +242,11 @@ function clearPlot(): void {
     totalBytesReceived = 0;
     sampleCount = 0;
     lastSampleTime = Date.now();
-    
+
     dataReceivedSpan.textContent = '0 bytes';
     sampleRateSpan.textContent = '0 Hz';
     lastValueSpan.textContent = '—';
-    
+
     console.log('Plot cleared');
 }
 

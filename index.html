@@ -1,12 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com">
     <title>USB Serial Plotter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
     <div class="app-container">
         <!-- Header -->
@@ -14,7 +20,8 @@
             <div class="header-content">
                 <h1 class="app-title">
                     <svg class="app-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
                     </svg>
                     USB Serial Plotter
                 </h1>
@@ -31,7 +38,7 @@
             <aside class="sidebar">
                 <div class="control-panel">
                     <h2 class="panel-title">Connection</h2>
-                    
+
                     <div class="control-group">
                         <label for="port-select">Serial Port</label>
                         <select id="port-select" class="input-field">
@@ -39,7 +46,8 @@
                         </select>
                         <button id="refresh-ports" class="btn btn-secondary">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
                             Refresh
                         </button>
@@ -64,15 +72,17 @@
 
                 <div class="control-panel">
                     <h2 class="panel-title">Plot Settings</h2>
-                    
+
                     <div class="control-group">
                         <label for="update-rate">Update Rate (ms)</label>
-                        <input type="number" id="update-rate" class="input-field" value="100" min="10" max="1000" step="10">
+                        <input type="number" id="update-rate" class="input-field" value="100" min="10" max="1000"
+                            step="10">
                     </div>
 
                     <div class="control-group">
                         <label for="data-points">Max Data Points</label>
-                        <input type="number" id="data-points" class="input-field" value="100" min="10" max="1000" step="10">
+                        <input type="number" id="data-points" class="input-field" value="100" min="10" max="1000"
+                            step="10">
                     </div>
 
                     <div class="control-group">
@@ -91,7 +101,8 @@
                 <div class="plot-container">
                     <div class="plot-placeholder">
                         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
                         </svg>
                         <p>Connect to a serial port to start plotting</p>
                     </div>
@@ -118,5 +129,5 @@
 
     <script src="dist/renderer.js"></script>
 </body>
-</html>
 
+</html>
