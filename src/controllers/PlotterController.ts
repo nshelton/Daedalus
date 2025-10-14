@@ -9,6 +9,10 @@ export class PlotterController {
     private readonly UP_DOWN_DELAY_SCALE = 0.06;
     private consumeQueueInterval: NodeJS.Timeout | null = null;
     private readStatusInterval: NodeJS.Timeout | null = null;
+    private finishTimeout: NodeJS.Timeout | null = null;
+
+    // EiBotBoard/AxiDraw has 2032 steps per inch = 80 steps per mm
+    private readonly STEPS_PER_MM = 80;
 
     constructor(model: PlotterModel, serialController: SerialController) {
         this.model = model;
@@ -43,13 +47,17 @@ export class PlotterController {
 
     private handleResponse(response: string): void {
         // Handle "OK" responses which indicate command completion
-        if (response === 'OK') {
-            this.model.setCommandsCompleted(this.model.getCommandsCompleted() + 1);
+        if (response === 'OK' || response.includes('OK')) {
+            const completed = this.model.getCommandsCompleted() + 1;
+            this.model.setCommandsCompleted(completed);
+            // Only log occasionally to avoid spam
+            if (completed % 10 === 0) {
+                console.log('Commands completed:', completed);
+            }
+        } else if (response.trim().length > 0) {
+            // Handle other responses (e.g., "QG,0,0,0")
+            console.log('EBB Response:', response);
         }
-
-        // Handle query responses (e.g., "QG,0,0,0")
-        // Can be extended to parse specific responses as needed
-        console.log('EBB Response:', response);
     }
 
     private async sendCommand(command: string): Promise<void> {
@@ -140,10 +148,14 @@ export class PlotterController {
 
     moveTo(p: [number, number]): void {
         const currentPos = this.model.getPosition();
-        const dx = Math.round(p[0] - currentPos[0]);
-        const dy = Math.round(p[1] - currentPos[1]);
 
-        this.model.enqueue({ type: 'move', params: [dx, dy] });
+        // Convert from mm to motor steps
+        const dxMm = p[0] - currentPos[0];
+        const dyMm = p[1] - currentPos[1];
+        const dxSteps = Math.round(dxMm * this.STEPS_PER_MM);
+        const dySteps = Math.round(dyMm * this.STEPS_PER_MM);
+
+        this.model.enqueue({ type: 'move', params: [dxSteps, dySteps] });
         this.model.setPosition(p);
     }
 
@@ -151,32 +163,58 @@ export class PlotterController {
         // Filter empty paths
         const validPaths = paths.filter(p => p.length > 0);
 
+        console.log(`Plotting ${validPaths.length} paths`);
+
         validPaths.forEach(path => {
-            this.moveTo(path[0]);
+            if (doLift) {
+                this.model.enqueue({ type: 'up' }); // Pen up first
+            }
+
+            this.moveTo(path[0]); // Move to start position
 
             if (doLift) {
-                this.model.enqueue({ type: 'down' });
+                this.model.enqueue({ type: 'down' }); // Pen down
             }
 
             for (let i = 1; i < path.length; i++) {
-                this.moveTo(path[i]);
+                this.moveTo(path[i]); // Draw the path
             }
 
             if (doLift) {
-                this.model.enqueue({ type: 'up' });
+                this.model.enqueue({ type: 'up' }); // Pen up after drawing
             }
         });
 
-        this.moveTo([0, 0]);
+        // Return to origin after all paths are complete
+        if (doLift) {
+            this.model.enqueue({ type: 'up' }); // Make sure pen is up
+        }
+        this.moveTo([0, 0]); // Return to origin (0, 0)
+
         this.model.setStartTime(new Date());
+
+        console.log(`Queued ${this.model.getQueueLength()} commands, returning to origin`);
     }
 
-    async executeMove(dx: number, dy: number): Promise<void> {
-        const speed = this.model.getSpeed();
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const duration = Math.max(1, Math.round((distance / speed) * 1000));
+    async executeMove(dxSteps: number, dySteps: number): Promise<void> {
+        // dxSteps and dySteps are already in motor steps
 
-        await this.stepperMove(duration, dx, dy);
+        // Skip zero-length moves
+        if (dxSteps === 0 && dySteps === 0) {
+            return;
+        }
+
+        const speed = this.model.getSpeed(); // Speed as percentage 1-100
+        const distance = Math.sqrt(dxSteps * dxSteps + dySteps * dySteps);
+
+        // Calculate duration based on speed
+        // At 100% speed, aim for ~25000 steps/second (AxiDraw max)
+        // This is much faster and more practical
+        const maxStepsPerSecond = 25000;
+        const stepsPerSecond = (speed / 100) * maxStepsPerSecond;
+        const duration = Math.max(1, Math.round((distance / stepsPerSecond) * 1000));
+
+        await this.stepperMove(duration, dxSteps, dySteps);
     }
 
     pause(): void {
@@ -201,13 +239,20 @@ export class PlotterController {
 
         const commandsSent = this.model.getCommandsSent();
         const commandsCompleted = this.model.getCommandsCompleted();
+        const queueLength = this.model.getQueueLength();
+        const pending = commandsSent - commandsCompleted;
 
-        console.log('commandsSent:', commandsSent, 'commandsCompleted:', commandsCompleted);
+        // Only log when there's activity in the queue
+        if (queueLength > 0) {
+            console.log('Queue:', queueLength, 'Sent:', commandsSent, 'Completed:', commandsCompleted, 'Pending:', pending);
+        }
 
-        // Don't overflow the buffer - keep at most 500 commands pending
-        if (commandsSent - commandsCompleted < 500) {
-            // Process up to 10 commands at once
-            for (let i = 0; i < 10; i++) {
+        // Don't overflow the buffer - keep at most 50 commands pending
+        if (pending < 50 && queueLength > 0) {
+            // Process only 1-2 commands at a time for better flow control
+            const batchSize = pending < 10 ? 2 : 1;
+
+            for (let i = 0; i < batchSize; i++) {
                 if (this.model.getQueueLength() > 0) {
                     const next = this.model.dequeue();
                     if (next) {
@@ -229,13 +274,28 @@ export class PlotterController {
                 }
             }
         }
+
+        // Check if queue is empty AFTER processing commands
+        // Wait a bit longer to ensure all commands have been sent and plotter has time to execute
+        if (queueLength === 0 && commandsSent > 0 && pending < 5) {
+            if (!this.finishTimeout) {
+                console.log('Plot complete! Queue empty, waiting for plotter to finish...');
+                // Wait 2 more seconds to ensure plotter completes all movements
+                this.finishTimeout = setTimeout(() => {
+                    console.log('Stopping queue consumption.');
+                    this.stopQueueConsumption();
+                    this.finishTimeout = null;
+                }, 2000);
+            }
+        }
     }
 
     startQueueConsumption(): void {
         if (!this.consumeQueueInterval) {
+            // Increased from 10ms to 50ms for better flow control
             this.consumeQueueInterval = setInterval(() => {
                 this.consumeQueue().catch(err => console.error('Queue consumption error:', err));
-            }, 10);
+            }, 50);
         }
     }
 
@@ -244,13 +304,18 @@ export class PlotterController {
             clearInterval(this.consumeQueueInterval);
             this.consumeQueueInterval = null;
         }
+        if (this.finishTimeout) {
+            clearTimeout(this.finishTimeout);
+            this.finishTimeout = null;
+        }
     }
 
     async readStatus(): Promise<void> {
         const commandsSent = this.model.getCommandsSent();
         const commandsCompleted = this.model.getCommandsCompleted();
 
-        if (commandsSent - commandsCompleted < 500) {
+        // Reduced from 500 to match consumeQueue limit
+        if (commandsSent - commandsCompleted < 50) {
             await this.queryStatus();
         }
     }

@@ -66,8 +66,10 @@ body {
 .connection-status {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    -webkit-app-region: no-drag;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background-color: var(--surface-light);
+    border-radius: 6px;
 }
 
 .status-indicator {
@@ -76,6 +78,7 @@ body {
     border-radius: 50%;
     background-color: var(--error);
     box-shadow: 0 0 8px rgba(244, 67, 54, 0.5);
+    transition: all 0.3s ease;
 }
 
 .status-indicator.connected {
@@ -88,9 +91,31 @@ body {
     box-shadow: 0 0 8px rgba(244, 67, 54, 0.5);
 }
 
-.status-text {
+.status-btn {
+    background: var(--primary-color);
+    border: none;
+    color: white;
+    font-family: 'IBM Plex Mono', monospace;
     font-size: 0.875rem;
-    color: var(--text-secondary);
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    flex: 1;
+}
+
+.status-btn:hover {
+    background-color: var(--primary-hover);
+}
+
+.status-btn:active {
+    transform: scale(0.98);
+}
+
+.status-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
 }
 
 /* Main Content */
@@ -128,6 +153,11 @@ body {
 
 .control-group {
     margin-bottom: 1rem;
+}
+
+.checkbox {
+    margin-right: 0.5rem;
+    cursor: pointer;
 }
 
 .control-group label {

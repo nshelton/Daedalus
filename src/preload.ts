@@ -23,6 +23,11 @@ export interface SerialState {
   lastError: string | null;
 }
 
+export interface PlotEntity {
+  id: string;
+  paths: [number, number][][]; // Array of paths, each path is array of [x, y] points
+}
+
 export interface PlotterState {
   position: [number, number];
   penUpPosition: number;
@@ -33,6 +38,7 @@ export interface PlotterState {
   commandsCompleted: number;
   queueLength: number;
   startTime: Date | null;
+  entities: PlotEntity[];
 }
 
 export interface OperationResult {
@@ -67,6 +73,12 @@ export interface ElectronAPI {
   plotterStopQueue: () => Promise<OperationResult>;
   plotterGetState: () => Promise<PlotterState>;
   plotterReset: () => Promise<OperationResult>;
+
+  // Entity operations
+  plotterGetEntities: () => Promise<PlotEntity[]>;
+  plotterAddEntity: (entity: PlotEntity) => Promise<OperationResult>;
+  plotterUpdateEntity: (id: string, updates: Partial<PlotEntity>) => Promise<OperationResult>;
+  plotterRemoveEntity: (id: string) => Promise<OperationResult>;
 }
 
 // Expose protected methods that allow the renderer process to use
@@ -104,6 +116,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   plotterStartQueue: () => ipcRenderer.invoke('plotter-start-queue'),
   plotterStopQueue: () => ipcRenderer.invoke('plotter-stop-queue'),
   plotterGetState: () => ipcRenderer.invoke('plotter-get-state'),
-  plotterReset: () => ipcRenderer.invoke('plotter-reset')
+  plotterReset: () => ipcRenderer.invoke('plotter-reset'),
+
+  // Entity operations
+  plotterGetEntities: () => ipcRenderer.invoke('plotter-get-entities'),
+  plotterAddEntity: (entity: PlotEntity) => ipcRenderer.invoke('plotter-add-entity', entity),
+  plotterUpdateEntity: (id: string, updates: Partial<PlotEntity>) => ipcRenderer.invoke('plotter-update-entity', id, updates),
+  plotterRemoveEntity: (id: string) => ipcRenderer.invoke('plotter-remove-entity', id)
 } as ElectronAPI);
 

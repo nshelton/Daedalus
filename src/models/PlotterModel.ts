@@ -3,6 +3,11 @@ interface PlotCommand {
     params?: any[];
 }
 
+export interface PlotEntity {
+    id: string;
+    paths: [number, number][][]; // Array of paths, each path is array of [x, y] points
+}
+
 interface PlotterState {
     position: [number, number];
     penUpPosition: number;
@@ -13,6 +18,7 @@ interface PlotterState {
     commandsCompleted: number;
     queue: PlotCommand[];
     startTime: Date | null;
+    entities: PlotEntity[];
 }
 
 export class PlotterModel {
@@ -25,7 +31,8 @@ export class PlotterModel {
         commandsSent: 0,
         commandsCompleted: 0,
         queue: [],
-        startTime: null
+        startTime: null,
+        entities: []
     };
 
     getState(): Readonly<PlotterState> {
@@ -126,8 +133,33 @@ export class PlotterModel {
             commandsSent: 0,
             commandsCompleted: 0,
             queue: [],
-            startTime: null
+            startTime: null,
+            entities: this.state.entities // Keep entities
         };
+    }
+
+    // Entity management
+    getEntities(): PlotEntity[] {
+        return [...this.state.entities];
+    }
+
+    addEntity(entity: PlotEntity): void {
+        this.state.entities.push(entity);
+    }
+
+    updateEntity(id: string, updates: Partial<PlotEntity>): void {
+        const idx = this.state.entities.findIndex(e => e.id === id);
+        if (idx !== -1) {
+            this.state.entities[idx] = { ...this.state.entities[idx], ...updates };
+        }
+    }
+
+    removeEntity(id: string): void {
+        this.state.entities = this.state.entities.filter(e => e.id !== id);
+    }
+
+    getEntity(id: string): PlotEntity | undefined {
+        return this.state.entities.find(e => e.id === id);
     }
 }
 

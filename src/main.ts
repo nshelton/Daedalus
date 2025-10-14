@@ -6,17 +6,8 @@ import { SerialController } from './controllers/SerialController';
 import { PlotterModel } from './models/PlotterModel';
 import { PlotterController } from './controllers/PlotterController';
 
-// Enable hot reload in development
-if (process.argv.includes('--dev')) {
-  try {
-    require('electron-reload')(__dirname, {
-      electron: path.join(__dirname, '..', 'node_modules', '.bin', 'electron'),
-      hardResetMethod: 'exit'
-    });
-  } catch (err) {
-    // electron-reload not installed, skip
-  }
-}
+// Note: Hot reload is handled by nodemon in dev mode (see package.json)
+// No need for electron-reload here as it conflicts with nodemon
 
 let mainWindow: BrowserWindow | null;
 
@@ -151,7 +142,16 @@ function createWindow(): void {
     mainWindow.webContents.openDevTools();
   }
 
-  mainWindow.on('closed', () => {
+  mainWindow.on('closed', async () => {
+    // Cleanup serial connection
+    try {
+      if (serialModel.isConnected()) {
+        console.log('Cleaning up serial connection on window close...');
+        await serialController.disconnect();
+      }
+    } catch (error) {
+      console.error('Error cleaning up serial connection:', error);
+    }
     mainWindow = null;
   });
 }
@@ -172,6 +172,34 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
+  }
+});
+
+// Cleanup before app quits
+app.on('before-quit', async (event) => {
+  if (serialModel.isConnected()) {
+    console.log('Cleaning up serial connection before quit...');
+    event.preventDefault();
+
+    try {
+      await serialController.disconnect();
+      console.log('Serial connection cleaned up successfully');
+    } catch (error) {
+      console.error('Error cleaning up serial connection:', error);
+    } finally {
+      app.exit(0);
+    }
+  }
+});
+
+// Additional cleanup on will-quit
+app.on('will-quit', async () => {
+  try {
+    if (serialModel.isConnected()) {
+      await serialController.disconnect();
+    }
+  } catch (error) {
+    console.error('Error in will-quit cleanup:', error);
   }
 });
 
@@ -376,6 +404,41 @@ ipcMain.handle('plotter-initialize', async () => {
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Initialize failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+// Entity IPC handlers
+ipcMain.handle('plotter-get-entities', async () => {
+  return plotterModel.getEntities();
+});
+
+ipcMain.handle('plotter-add-entity', async (_event, entity: any) => {
+  try {
+    plotterModel.addEntity(entity);
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Add entity failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-update-entity', async (_event, id: string, updates: any) => {
+  try {
+    plotterModel.updateEntity(id, updates);
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Update entity failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-remove-entity', async (_event, id: string) => {
+  try {
+    plotterModel.removeEntity(id);
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Remove entity failed';
     return { success: false, error: errorMsg };
   }
 });
