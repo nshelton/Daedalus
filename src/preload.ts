@@ -46,6 +46,12 @@ export interface OperationResult {
   error?: string;
 }
 
+export interface PositionResult {
+  success: boolean;
+  position?: [number, number];
+  error?: string;
+}
+
 // Define the API interface
 export interface ElectronAPI {
   // Serial operations
@@ -72,7 +78,9 @@ export interface ElectronAPI {
   plotterStartQueue: () => Promise<OperationResult>;
   plotterStopQueue: () => Promise<OperationResult>;
   plotterGetState: () => Promise<PlotterState>;
+  plotterGetPosition: () => Promise<PositionResult>;
   plotterReset: () => Promise<OperationResult>;
+  plotterSetOrigin: () => Promise<OperationResult>;
 
   // Entity operations
   plotterGetEntities: () => Promise<PlotEntity[]>;
@@ -116,7 +124,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   plotterStartQueue: () => ipcRenderer.invoke('plotter-start-queue'),
   plotterStopQueue: () => ipcRenderer.invoke('plotter-stop-queue'),
   plotterGetState: () => ipcRenderer.invoke('plotter-get-state'),
+  plotterGetPosition: () => ipcRenderer.invoke('plotter-get-position'),
   plotterReset: () => ipcRenderer.invoke('plotter-reset'),
+  plotterSetOrigin: () => ipcRenderer.invoke('plotter-set-origin'),
 
   // Entity operations
   plotterGetEntities: () => ipcRenderer.invoke('plotter-get-entities'),

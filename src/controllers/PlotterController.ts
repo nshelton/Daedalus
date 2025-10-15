@@ -10,6 +10,8 @@ export class PlotterController {
     private consumeQueueInterval: NodeJS.Timeout | null = null;
     private readStatusInterval: NodeJS.Timeout | null = null;
     private finishTimeout: NodeJS.Timeout | null = null;
+    private readonly PEN_UP_COMMAND = 4;
+    private readonly PEN_DOWN_COMMAND = 5;
 
     // EiBotBoard/AxiDraw has 2032 steps per inch = 80 steps per mm
     private readonly STEPS_PER_MM = 80;
@@ -54,9 +56,70 @@ export class PlotterController {
             if (completed % 10 === 0) {
                 console.log('Commands completed:', completed);
             }
+        } else if (response.startsWith('QG,')) {
+            // Parse QG (Query General) response
+            this.parseQGResponse(response);
+            // Count query responses as completed to keep pending in sync
+            const completed = this.model.getCommandsCompleted() + 1;
+            this.model.setCommandsCompleted(completed);
+        } else if (response.startsWith('QM,')) {
+            // Parse QM (Query Motors) response - legacy but still supported
+            this.parseQMResponse(response);
+            // Count query responses as completed to keep pending in sync
+            const completed = this.model.getCommandsCompleted() + 1;
+            this.model.setCommandsCompleted(completed);
         } else if (response.trim().length > 0) {
-            // Handle other responses (e.g., "QG,0,0,0")
+            // Handle other responses
             console.log('EBB Response:', response);
+        }
+    }
+
+    private parseQGResponse(response: string): void {
+        // QG response format: QG,<status_bits>,<motor1_position>,<motor2_position>
+        const parts = response.split(',');
+        if (parts.length >= 4) {
+            const statusBits = parseInt(parts[1], 10);
+            const motor1Pos = parseInt(parts[2], 10);
+            const motor2Pos = parseInt(parts[3], 10);
+
+            // CoreXY inverse kinematics: from motor steps (A,B) to XY steps
+            const aSteps = motor1Pos;
+            const bSteps = motor2Pos;
+            const xSteps = Math.round((aSteps + bSteps) / 2);
+            const ySteps = Math.round((aSteps - bSteps) / 2);
+
+            // Convert step positions to mm coordinates
+            const xMm = xSteps / this.STEPS_PER_MM;
+            const yMm = ySteps / this.STEPS_PER_MM;
+
+            // Update model with current position
+            this.model.setPosition([xMm, yMm]);
+
+            console.log(`Position: X=${xMm.toFixed(2)}mm, Y=${yMm.toFixed(2)}mm (steps: ${motor1Pos}, ${motor2Pos}, status: 0x${statusBits.toString(16)})`);
+        }
+    }
+
+    private parseQMResponse(response: string): void {
+        // QM response format: QM,<motor1_position>,<motor2_position>
+        const parts = response.split(',');
+        if (parts.length >= 3) {
+            const motor1Pos = parseInt(parts[1], 10);
+            const motor2Pos = parseInt(parts[2], 10);
+
+            // CoreXY inverse kinematics: from motor steps (A,B) to XY steps
+            const aSteps = motor1Pos;
+            const bSteps = motor2Pos;
+            const xSteps = Math.round((aSteps + bSteps) / 2);
+            const ySteps = Math.round((aSteps - bSteps) / 2);
+
+            // Convert step positions to mm coordinates
+            const xMm = xSteps / this.STEPS_PER_MM;
+            const yMm = ySteps / this.STEPS_PER_MM;
+
+            // Update model with current position
+            this.model.setPosition([xMm, yMm]);
+
+            console.log(`Position: X=${xMm.toFixed(2)}mm, Y=${yMm.toFixed(2)}mm (steps: ${motor1Pos}, ${motor2Pos})`);
         }
     }
 
@@ -68,8 +131,8 @@ export class PlotterController {
     // EBB Command: Configure servo motor settings
     async configureServo(parameter: number, value: number): Promise<void> {
         // SC,<parameter>,<value>
-        // parameter 4 = servo min (pen up)
-        // parameter 5 = servo max (pen down)
+        // parameter 4 = servo min (pen up position)
+        // parameter 5 = servo max (pen down position)
         // parameter 10 = servo rate up
         // parameter 11 = servo rate down
         await this.sendCommand(`SC,${parameter},${value}`);
@@ -78,17 +141,17 @@ export class PlotterController {
     // EBB Command: Set pen state
     async setPenState(state: 0 | 1, duration?: number): Promise<void> {
         // SP,<state>,<duration>
-        // state: 0 = up, 1 = down
+        // state: 0 = down, 1 = up
         const dur = duration !== undefined ? duration : this.upDownDurationMs;
         await this.sendCommand(`SP,${state},${dur}`);
     }
 
     async penUp(duration?: number): Promise<void> {
-        await this.setPenState(0, duration);
+        await this.setPenState(1, duration);
     }
 
     async penDown(duration?: number): Promise<void> {
-        await this.setPenState(1, duration);
+        await this.setPenState(0, duration);
     }
 
     // EBB Command: Stepper move
@@ -119,6 +182,29 @@ export class PlotterController {
         await this.sendCommand('QG');
     }
 
+    // EBB Command: Query motors position (legacy but still supported)
+    async queryMotors(): Promise<void> {
+        // QM - Query Motors (deprecated in v3.0+ but still works)
+        await this.sendCommand('QM');
+    }
+
+    // High-level method to get current position
+    async getCurrentPosition(): Promise<[number, number]> {
+        // Query the current position from the EBB
+        await this.queryStatus();
+        // Return the position from our model (updated by response parsing)
+        return this.model.getPosition();
+    }
+
+    // Set position to (0,0) - useful for connection initialization
+    async setPositionToOrigin(): Promise<void> {
+        // Reset the EBB hardware position tracking
+        await this.reset();
+        // Set our model position to (0,0)
+        this.model.setPosition([0, 0]);
+        console.log('Position set to origin (0,0)');
+    }
+
     // EBB Command: Reset
     async reset(): Promise<void> {
         await this.sendCommand('R');
@@ -132,13 +218,13 @@ export class PlotterController {
 
     async setPenUpValue(val: number): Promise<void> {
         this.model.setPenUpPosition(Math.round(val));
-        await this.configureServo(5, Math.round(val)); // SC parameter 5 = pen up position
+        await this.configureServo(this.PEN_UP_COMMAND, Math.round(val)); // SC parameter 4 = servo min (pen up)
         this.updateUpDownDuration();
     }
 
     async setPenDownValue(val: number): Promise<void> {
         this.model.setPenDownPosition(Math.round(val));
-        await this.configureServo(4, Math.round(val)); // SC parameter 4 = pen down position
+        await this.configureServo(this.PEN_DOWN_COMMAND, Math.round(val)); // SC parameter 5 = servo max (pen down)
         this.updateUpDownDuration();
     }
 
@@ -189,6 +275,7 @@ export class PlotterController {
         if (doLift) {
             this.model.enqueue({ type: 'up' }); // Make sure pen is up
         }
+
         this.moveTo([0, 0]); // Return to origin (0, 0)
 
         this.model.setStartTime(new Date());
@@ -205,7 +292,13 @@ export class PlotterController {
         }
 
         const speed = this.model.getSpeed(); // Speed as percentage 1-100
-        const distance = Math.sqrt(dxSteps * dxSteps + dySteps * dySteps);
+
+        // CoreXY forward kinematics: from XY steps to motor steps (A,B)
+        const aSteps = dxSteps + dySteps;
+        const bSteps = dxSteps - dySteps;
+
+        // Calculate duration based on the limiting motor distance to maintain feed rate
+        const distance = Math.max(Math.abs(aSteps), Math.abs(bSteps));
 
         // Calculate duration based on speed
         // At 100% speed, aim for ~25000 steps/second (AxiDraw max)
@@ -214,7 +307,7 @@ export class PlotterController {
         const stepsPerSecond = (speed / 100) * maxStepsPerSecond;
         const duration = Math.max(1, Math.round((distance / stepsPerSecond) * 1000));
 
-        await this.stepperMove(duration, dxSteps, dySteps);
+        await this.stepperMove(duration, aSteps, bSteps);
     }
 
     pause(): void {
@@ -255,6 +348,7 @@ export class PlotterController {
             for (let i = 0; i < batchSize; i++) {
                 if (this.model.getQueueLength() > 0) {
                     const next = this.model.dequeue();
+                    console.log('Dequeued command:', next);
                     if (next) {
                         switch (next.type) {
                             case 'move':

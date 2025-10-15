@@ -71,6 +71,16 @@ function createCirclePaths(cx: number, cy: number, radius: number): [number, num
     return [path]; // Return as array of paths (single path for a circle)
 }
 
+function createSquarePath(cx: number, cy: number, size: number): [number, number][][] {
+    const path: [number, number][] = [];
+    path.push([cx, cy]);
+    path.push([cx + size, cy]);
+    path.push([cx + size, cy + size]);
+    path.push([cx, cy + size]);
+    path.push([cx, cy]);
+    return [path];
+}
+
 // Initialize the application
 async function init(): Promise<void> {
     setupEventListeners();
@@ -381,6 +391,18 @@ async function initializePlotter(): Promise<void> {
 
         if (result.success) {
             console.log('Plotter initialized successfully');
+
+            // Reset position to (0,0) on connection
+            console.log('Setting plotter position to origin (0,0)...');
+            await window.electronAPI.plotterSetOrigin();
+
+            // Query actual position from EBB to sync with hardware
+            const positionResult = await window.electronAPI.plotterGetPosition();
+            if (positionResult.success && positionResult.position) {
+                console.log(`Plotter actual position: [${positionResult.position[0].toFixed(2)}, ${positionResult.position[1].toFixed(2)}]mm`);
+            } else {
+                console.log('Could not query plotter position, assuming (0,0)');
+            }
         } else {
             console.error('Plotter initialization failed:', result.error);
         }
@@ -472,11 +494,11 @@ function setupCanvas(): void {
         (plotCanvas.height - padding * 2) / A3_HEIGHT_MM
     );
 
-    // Add a test circle near the origin (bottom-left)
-    entities.push({
-        id: 'circle1',
-        paths: createCirclePaths(60, 60, 40) // Circle at (60, 60) from bottom-left with radius 40
-    });
+    // Remove the test circle - the 1cm grid is already drawn in drawA3Paper()
+    // entities.push({
+    //     id: 'circle1',
+    //     paths: createCirclePaths(60, 60, 40) // Circle at (60, 60) from bottom-left with radius 40
+    // });
 
     // Start render loop
     requestAnimationFrame(render);
@@ -632,10 +654,6 @@ function getResizeHandles(bounds: { x: number; y: number; width: number; height:
         { id: 'ne', x: bounds.x + bounds.width, y: bounds.y },
         { id: 'sw', x: bounds.x, y: bounds.y + bounds.height },
         { id: 'se', x: bounds.x + bounds.width, y: bounds.y + bounds.height },
-        { id: 'n', x: bounds.x + bounds.width / 2, y: bounds.y },
-        { id: 's', x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
-        { id: 'e', x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
-        { id: 'w', x: bounds.x, y: bounds.y + bounds.height / 2 },
     ];
 }
 
@@ -704,7 +722,7 @@ function handleMouseMove(e: MouseEvent): void {
         const entity = entities.find(e => e.id === selectedEntityId);
         if (entity) {
             const dx = (mouseX - dragStartX) / zoom;
-            const dy = (mouseY - dragStartY) / zoom;
+            const dy = -(mouseY - dragStartY) / zoom; // Flip Y to match coordinate system
             translateEntity(entity, dx, dy);
             dragStartX = mouseX;
             dragStartY = mouseY;
@@ -736,7 +754,7 @@ function handleDoubleClick(e: MouseEvent): void {
     // Add new circle at click position
     const newCircle: PlotEntity = {
         id: `circle${Date.now()}`,
-        paths: createCirclePaths(worldX, worldY, 40)
+        paths: createSquarePath(worldX, worldY, 40)
     };
     entities.push(newCircle);
 }
@@ -783,59 +801,58 @@ function translateEntity(entity: PlotEntity, dx: number, dy: number): void {
     );
 }
 
-// Scale an entity from a resize handle
+// Scale an entity from a resize handle (maintains aspect ratio)
 function scaleEntity(entity: PlotEntity, handle: string, worldX: number, worldY: number): void {
     const oldBounds = getEntityBounds(entity);
     const minSize = 10;
 
     let newBounds = { ...oldBounds };
+    let scaleFactor: number;
 
     switch (handle) {
         case 'se':
-            newBounds.width = Math.max(minSize, worldX - oldBounds.x);
-            newBounds.height = Math.max(minSize, worldY - oldBounds.y);
+            // Calculate scale based on distance from opposite corner
+            const seDistance = Math.sqrt(Math.pow(worldX - oldBounds.x, 2) + Math.pow(worldY - oldBounds.y, 2));
+            const seOriginalDistance = Math.sqrt(Math.pow(oldBounds.width, 2) + Math.pow(oldBounds.height, 2));
+            scaleFactor = Math.max(minSize / Math.min(oldBounds.width, oldBounds.height), seDistance / seOriginalDistance);
+            newBounds.width = oldBounds.width * scaleFactor;
+            newBounds.height = oldBounds.height * scaleFactor;
             break;
         case 'sw':
-            newBounds.width = Math.max(minSize, oldBounds.x + oldBounds.width - worldX);
+            // Calculate scale based on distance from opposite corner
+            const swDistance = Math.sqrt(Math.pow(oldBounds.x + oldBounds.width - worldX, 2) + Math.pow(worldY - oldBounds.y, 2));
+            const swOriginalDistance = Math.sqrt(Math.pow(oldBounds.width, 2) + Math.pow(oldBounds.height, 2));
+            scaleFactor = Math.max(minSize / Math.min(oldBounds.width, oldBounds.height), swDistance / swOriginalDistance);
+            newBounds.width = oldBounds.width * scaleFactor;
+            newBounds.height = oldBounds.height * scaleFactor;
             newBounds.x = oldBounds.x + oldBounds.width - newBounds.width;
-            newBounds.height = Math.max(minSize, worldY - oldBounds.y);
             break;
         case 'ne':
-            newBounds.width = Math.max(minSize, worldX - oldBounds.x);
-            newBounds.height = Math.max(minSize, oldBounds.y + oldBounds.height - worldY);
+            // Calculate scale based on distance from opposite corner
+            const neDistance = Math.sqrt(Math.pow(worldX - oldBounds.x, 2) + Math.pow(oldBounds.y + oldBounds.height - worldY, 2));
+            const neOriginalDistance = Math.sqrt(Math.pow(oldBounds.width, 2) + Math.pow(oldBounds.height, 2));
+            scaleFactor = Math.max(minSize / Math.min(oldBounds.width, oldBounds.height), neDistance / neOriginalDistance);
+            newBounds.width = oldBounds.width * scaleFactor;
+            newBounds.height = oldBounds.height * scaleFactor;
             newBounds.y = oldBounds.y + oldBounds.height - newBounds.height;
             break;
         case 'nw':
-            newBounds.width = Math.max(minSize, oldBounds.x + oldBounds.width - worldX);
-            newBounds.height = Math.max(minSize, oldBounds.y + oldBounds.height - worldY);
+            // Calculate scale based on distance from opposite corner
+            const nwDistance = Math.sqrt(Math.pow(oldBounds.x + oldBounds.width - worldX, 2) + Math.pow(oldBounds.y + oldBounds.height - worldY, 2));
+            const nwOriginalDistance = Math.sqrt(Math.pow(oldBounds.width, 2) + Math.pow(oldBounds.height, 2));
+            scaleFactor = Math.max(minSize / Math.min(oldBounds.width, oldBounds.height), nwDistance / nwOriginalDistance);
+            newBounds.width = oldBounds.width * scaleFactor;
+            newBounds.height = oldBounds.height * scaleFactor;
             newBounds.x = oldBounds.x + oldBounds.width - newBounds.width;
-            newBounds.y = oldBounds.y + oldBounds.height - newBounds.height;
-            break;
-        case 'e':
-            newBounds.width = Math.max(minSize, worldX - oldBounds.x);
-            break;
-        case 'w':
-            newBounds.width = Math.max(minSize, oldBounds.x + oldBounds.width - worldX);
-            newBounds.x = oldBounds.x + oldBounds.width - newBounds.width;
-            break;
-        case 's':
-            newBounds.height = Math.max(minSize, worldY - oldBounds.y);
-            break;
-        case 'n':
-            newBounds.height = Math.max(minSize, oldBounds.y + oldBounds.height - worldY);
             newBounds.y = oldBounds.y + oldBounds.height - newBounds.height;
             break;
     }
 
-    // Calculate scale factors
-    const scaleX = newBounds.width / oldBounds.width;
-    const scaleY = newBounds.height / oldBounds.height;
-
-    // Transform all paths
+    // Transform all paths using uniform scaling
     entity.paths = entity.paths.map(path =>
         path.map(([x, y]) => {
-            const relX = (x - oldBounds.x) * scaleX;
-            const relY = (y - oldBounds.y) * scaleY;
+            const relX = (x - oldBounds.x) * scaleFactor;
+            const relY = (y - oldBounds.y) * scaleFactor;
             return [newBounds.x + relX, newBounds.y + relY] as [number, number];
         })
     );
@@ -860,14 +877,10 @@ function updateCursor(worldX: number, worldY: number): void {
 
 function getCursorForHandle(handle: string): string {
     const cursors: Record<string, string> = {
-        'nw': 'nw-resize',
-        'ne': 'ne-resize',
-        'sw': 'sw-resize',
-        'se': 'se-resize',
-        'n': 'n-resize',
-        's': 's-resize',
-        'e': 'e-resize',
-        'w': 'w-resize'
+        'nw': 'ne-resize',  // Dragging NW corner - cursor should point NW
+        'ne': 'nw-resize',  // Dragging NE corner - cursor should point NE
+        'sw': 'se-resize',  // Dragging SW corner - cursor should point SW
+        'se': 'sw-resize'   // Dragging SE corner - cursor should point SE
     };
     return cursors[handle] || 'default';
 }

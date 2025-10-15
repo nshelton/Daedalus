@@ -388,12 +388,35 @@ ipcMain.handle('plotter-get-state', async () => {
   return plotterModel.getState();
 });
 
+ipcMain.handle('plotter-get-position', async () => {
+  try {
+    const position = await plotterController.getCurrentPosition();
+    return { success: true, position };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Get position failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
 ipcMain.handle('plotter-reset', async () => {
   try {
+    // Send EBB reset command to hardware
+    await plotterController.reset();
+    // Reset the software model
     plotterModel.reset();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Reset failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-set-origin', async () => {
+  try {
+    await plotterController.setPositionToOrigin();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Set origin failed';
     return { success: false, error: errorMsg };
   }
 });

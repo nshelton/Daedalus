@@ -1,5 +1,5 @@
 interface PlotCommand {
-    type: 'move' | 'up' | 'down' | 'query';
+    type: 'move' | 'up' | 'down' | 'query' | 'reset';
     params?: any[];
 }
 
