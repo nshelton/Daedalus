@@ -181,19 +181,7 @@ function glyphToPaths(cmds: (string | number)[], offsetX: number, offsetY: numbe
 }
 
 function measureGlyphWidthUnits(cmds: (string | number)[]): number {
-    if (!cmds || cmds.length === 0) return 10;
-    let minX = Infinity, maxX = -Infinity;
-    for (let i = 0; i < cmds.length;) {
-        /* op is not needed for width, just consume */
-        i++;
-        const x = cmds[i++] as number;
-        /* y consumed but unused for width */
-        i++;
-        minX = Math.min(minX, x);
-        maxX = Math.max(maxX, x);
-    }
-    const width = maxX - minX;
-    return isFinite(width) && width > 0 ? width : 10;
+    return 15;
 }
 
 function textToPaths(text: string, originX: number, originY: number, heightMm: number = 10, letterSpacingUnits: number = 2): [number, number][][] {
@@ -343,7 +331,6 @@ function createPikachuPath(cx: number, cy: number, size: number): [number, numbe
 
     return paths;
 }
-
 // Helper to create a circle as paths
 function createCirclePaths(cx: number, cy: number, radius: number): [number, number][][] {
     const path: [number, number][] = [];
