@@ -13,6 +13,7 @@ interface PlotterState {
     penUpPosition: number;
     penDownPosition: number;
     speed: number;
+    movingSpeed: number; // Add new field for moving speed
     isPaused: boolean;
     commandsSent: number;
     commandsCompleted: number;
@@ -27,6 +28,7 @@ export class PlotterModel {
         penUpPosition: 16000,  // Default from EBB docs (1.33ms)
         penDownPosition: 12000, // Typical down position
         speed: 1000,
+        movingSpeed: 2000, // Add default moving speed (faster than plotting)
         isPaused: false,
         commandsSent: 0,
         commandsCompleted: 0,
@@ -69,6 +71,14 @@ export class PlotterModel {
 
     setSpeed(val: number): void {
         this.state.speed = val;
+    }
+
+    getMovingSpeed(): number {
+        return this.state.movingSpeed;
+    }
+
+    setMovingSpeed(val: number): void {
+        this.state.movingSpeed = val;
     }
 
     isPaused(): boolean {
@@ -129,6 +139,7 @@ export class PlotterModel {
             penUpPosition: this.state.penUpPosition, // Keep settings
             penDownPosition: this.state.penDownPosition,
             speed: this.state.speed,
+            movingSpeed: this.state.movingSpeed, // Keep moving speed setting
             isPaused: false,
             commandsSent: 0,
             commandsCompleted: 0,

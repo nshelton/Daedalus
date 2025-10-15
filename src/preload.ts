@@ -33,6 +33,7 @@ export interface PlotterState {
   penUpPosition: number;
   penDownPosition: number;
   speed: number;
+  movingSpeed: number; // Add new field for moving speed
   isPaused: boolean;
   commandsSent: number;
   commandsCompleted: number;
@@ -81,6 +82,7 @@ export interface ElectronAPI {
   plotterGetPosition: () => Promise<PositionResult>;
   plotterReset: () => Promise<OperationResult>;
   plotterSetOrigin: () => Promise<OperationResult>;
+  setMovingSpeed: (value: number) => Promise<OperationResult>;
 
   // Entity operations
   plotterGetEntities: () => Promise<PlotEntity[]>;
@@ -127,6 +129,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   plotterGetPosition: () => ipcRenderer.invoke('plotter-get-position'),
   plotterReset: () => ipcRenderer.invoke('plotter-reset'),
   plotterSetOrigin: () => ipcRenderer.invoke('plotter-set-origin'),
+  setMovingSpeed: (value: number) => ipcRenderer.invoke('set-moving-speed', value),
 
   // Entity operations
   plotterGetEntities: () => ipcRenderer.invoke('plotter-get-entities'),

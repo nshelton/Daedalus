@@ -466,3 +466,17 @@ ipcMain.handle('plotter-remove-entity', async (_event, id: string) => {
   }
 });
 
+// Add new IPC handler for moving speed
+ipcMain.handle('set-moving-speed', async (event, value: number) => {
+  try {
+    if (plotterController) {
+      plotterController.setMovingSpeedValue(value);
+      return { success: true };
+    }
+    return { success: false, error: 'Plotter not connected' };
+  } catch (error) {
+    console.error('Error setting moving speed:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+});
+

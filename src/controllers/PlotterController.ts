@@ -141,17 +141,17 @@ export class PlotterController {
     // EBB Command: Set pen state
     async setPenState(state: 0 | 1, duration?: number): Promise<void> {
         // SP,<state>,<duration>
-        // state: 0 = down, 1 = up
+        // state: 0 = up, 1 = down (per EBB docs)
         const dur = duration !== undefined ? duration : this.upDownDurationMs;
         await this.sendCommand(`SP,${state},${dur}`);
     }
 
     async penUp(duration?: number): Promise<void> {
-        await this.setPenState(1, duration);
+        await this.setPenState(0, duration);
     }
 
     async penDown(duration?: number): Promise<void> {
-        await this.setPenState(0, duration);
+        await this.setPenState(1, duration);
     }
 
     // EBB Command: Stepper move
@@ -232,58 +232,13 @@ export class PlotterController {
         this.model.setSpeed(val);
     }
 
-    moveTo(p: [number, number]): void {
-        const currentPos = this.model.getPosition();
-
-        // Convert from mm to motor steps
-        const dxMm = p[0] - currentPos[0];
-        const dyMm = p[1] - currentPos[1];
-        const dxSteps = Math.round(dxMm * this.STEPS_PER_MM);
-        const dySteps = Math.round(dyMm * this.STEPS_PER_MM);
-
-        this.model.enqueue({ type: 'move', params: [dxSteps, dySteps] });
-        this.model.setPosition(p);
+    // Add new method for setting moving speed
+    setMovingSpeedValue(val: number): void {
+        this.model.setMovingSpeed(val);
     }
 
-    plotPath(paths: [number, number][][], doLift: boolean = true): void {
-        // Filter empty paths
-        const validPaths = paths.filter(p => p.length > 0);
-
-        console.log(`Plotting ${validPaths.length} paths`);
-
-        validPaths.forEach(path => {
-            if (doLift) {
-                this.model.enqueue({ type: 'up' }); // Pen up first
-            }
-
-            this.moveTo(path[0]); // Move to start position
-
-            if (doLift) {
-                this.model.enqueue({ type: 'down' }); // Pen down
-            }
-
-            for (let i = 1; i < path.length; i++) {
-                this.moveTo(path[i]); // Draw the path
-            }
-
-            if (doLift) {
-                this.model.enqueue({ type: 'up' }); // Pen up after drawing
-            }
-        });
-
-        // Return to origin after all paths are complete
-        if (doLift) {
-            this.model.enqueue({ type: 'up' }); // Make sure pen is up
-        }
-
-        this.moveTo([0, 0]); // Return to origin (0, 0)
-
-        this.model.setStartTime(new Date());
-
-        console.log(`Queued ${this.model.getQueueLength()} commands, returning to origin`);
-    }
-
-    async executeMove(dxSteps: number, dySteps: number): Promise<void> {
+    // Update executeMove to use different speeds based on pen state
+    async executeMove(dxSteps: number, dySteps: number, isPlotting: boolean = false): Promise<void> {
         // dxSteps and dySteps are already in motor steps
 
         // Skip zero-length moves
@@ -291,11 +246,12 @@ export class PlotterController {
             return;
         }
 
-        const speed = this.model.getSpeed(); // Speed as percentage 1-100
+        // Use different speeds based on whether we're plotting or just moving
+        const speed = isPlotting ? this.model.getSpeed() : this.model.getMovingSpeed();
 
         // CoreXY forward kinematics: from XY steps to motor steps (A,B)
-        const aSteps = dxSteps + dySteps;
-        const bSteps = dxSteps - dySteps;
+        const bSteps = dxSteps + dySteps;
+        const aSteps = dxSteps - dySteps;
 
         // Calculate duration based on the limiting motor distance to maintain feed rate
         const distance = Math.max(Math.abs(aSteps), Math.abs(bSteps));
@@ -308,6 +264,62 @@ export class PlotterController {
         const duration = Math.max(1, Math.round((distance / stepsPerSecond) * 1000));
 
         await this.stepperMove(duration, aSteps, bSteps);
+    }
+
+    // Update moveTo to track pen state
+    moveTo(p: [number, number], isPlotting: boolean = false): void {
+        const currentPos = this.model.getPosition();
+
+        // Convert from mm to motor steps
+        const dxMm = p[0] - currentPos[0];
+        const dyMm = p[1] - currentPos[1];
+        const dxSteps = Math.round(dxMm * this.STEPS_PER_MM);
+        const dySteps = Math.round(dyMm * this.STEPS_PER_MM);
+
+        this.model.enqueue({ type: 'move', params: [dxSteps, dySteps, isPlotting] });
+        this.model.setPosition(p);
+    }
+
+    // Update plotPath to use plotting speed for drawing moves
+    plotPath(paths: [number, number][][], doLift: boolean = true): void {
+        // Filter empty paths
+        const validPaths = paths.filter(p => p.length > 0);
+
+        console.log(`Plotting ${validPaths.length} paths`);
+
+        // Ensure pen is up before any travel moves
+        if (doLift && validPaths.length > 0) {
+            this.model.enqueue({ type: 'up' });
+        }
+
+        validPaths.forEach(path => {
+            // Move to start position (not plotting)
+            this.moveTo(path[0], false);
+
+            if (doLift) {
+                this.model.enqueue({ type: 'down' });
+            }
+
+            for (let i = 1; i < path.length; i++) {
+                this.moveTo(path[i], true); // Draw the path (plotting)
+            }
+
+            if (doLift) {
+                this.model.enqueue({ type: 'up' });
+            }
+        });
+
+        // Return to origin after all paths are complete
+        if (doLift && validPaths.length === 0) {
+            // If there were no paths, still ensure pen is up
+            this.model.enqueue({ type: 'up' });
+        }
+
+        this.moveTo([0, 0], false); // Return to origin (not plotting)
+
+        this.model.setStartTime(new Date());
+
+        console.log(`Queued ${this.model.getQueueLength()} commands, returning to origin`);
     }
 
     pause(): void {
@@ -352,7 +364,8 @@ export class PlotterController {
                     if (next) {
                         switch (next.type) {
                             case 'move':
-                                await this.executeMove(next.params![0], next.params![1]);
+                                const isPlotting = next.params![2] || false; // Get plotting flag
+                                await this.executeMove(next.params![0], next.params![1], isPlotting);
                                 break;
                             case 'up':
                                 await this.penUp(this.upDownDurationMs);
