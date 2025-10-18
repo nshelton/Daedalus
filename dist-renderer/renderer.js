@@ -1,45 +1,38 @@
+"use strict";
 // DOM Elements
-const penUpBtn = document.getElementById('pen-up-btn') as HTMLButtonElement;
-const penDownBtn = document.getElementById('pen-down-btn') as HTMLButtonElement;
-const plotBtn = document.getElementById('plot-btn') as HTMLButtonElement;
-const stopBtn = document.getElementById('stop-btn') as HTMLButtonElement;
-const disengageBtn = document.getElementById('disengage-btn') as HTMLButtonElement;
-const statusBtn = document.getElementById('status-btn') as HTMLButtonElement;
-const debugAxesCheckbox = document.getElementById('debug-axes-checkbox') as HTMLInputElement;
-
-const penUpSlider = document.getElementById('pen-up-slider') as HTMLInputElement;
-const penDownSlider = document.getElementById('pen-down-slider') as HTMLInputElement;
-const speedSlider = document.getElementById('speed-slider') as HTMLInputElement;
-
-const penUpValue = document.getElementById('pen-up-value') as HTMLSpanElement;
-const penDownValue = document.getElementById('pen-down-value') as HTMLSpanElement;
-const speedValue = document.getElementById('speed-value') as HTMLSpanElement;
-
-const statusIndicator = document.querySelector('.status-indicator') as HTMLElement;
-const plotterControls = document.getElementById('plotter-controls') as HTMLElement;
-const plotCanvas = document.getElementById('plot-canvas') as HTMLCanvasElement;
-const plotPlaceholder = document.querySelector('.plot-placeholder') as HTMLElement;
-
-const dataReceivedSpan = document.getElementById('data-received') as HTMLSpanElement;
-const sampleRateSpan = document.getElementById('sample-rate') as HTMLSpanElement;
-const lastValueSpan = document.getElementById('last-value') as HTMLSpanElement;
-
+const penUpBtn = document.getElementById('pen-up-btn');
+const penDownBtn = document.getElementById('pen-down-btn');
+const plotBtn = document.getElementById('plot-btn');
+const stopBtn = document.getElementById('stop-btn');
+const disengageBtn = document.getElementById('disengage-btn');
+const statusBtn = document.getElementById('status-btn');
+const debugAxesCheckbox = document.getElementById('debug-axes-checkbox');
+const penUpSlider = document.getElementById('pen-up-slider');
+const penDownSlider = document.getElementById('pen-down-slider');
+const speedSlider = document.getElementById('speed-slider');
+const penUpValue = document.getElementById('pen-up-value');
+const penDownValue = document.getElementById('pen-down-value');
+const speedValue = document.getElementById('speed-value');
+const statusIndicator = document.querySelector('.status-indicator');
+const plotterControls = document.getElementById('plotter-controls');
+const plotCanvas = document.getElementById('plot-canvas');
+const plotPlaceholder = document.querySelector('.plot-placeholder');
+const dataReceivedSpan = document.getElementById('data-received');
+const sampleRateSpan = document.getElementById('sample-rate');
+const lastValueSpan = document.getElementById('last-value');
 // Add new slider and value elements
-const movingSpeedSlider = document.getElementById('moving-speed-slider') as HTMLInputElement;
-const movingSpeedValue = document.getElementById('moving-speed-value') as HTMLSpanElement;
-
+const movingSpeedSlider = document.getElementById('moving-speed-slider');
+const movingSpeedValue = document.getElementById('moving-speed-value');
 // A3 dimensions in mm
 const A3_WIDTH_MM = 297;
 const A3_HEIGHT_MM = 420;
-
 // State
-let isConnected: boolean = false;
-let selectedPort: string | null = null;
-let dataBuffer: number[] = [];
-let totalBytesReceived: number = 0;
-let lastSampleTime: number = Date.now();
-let sampleCount: number = 0;
-
+let isConnected = false;
+let selectedPort = null;
+let dataBuffer = [];
+let totalBytesReceived = 0;
+let lastSampleTime = Date.now();
+let sampleCount = 0;
 // Viewport state
 let zoom = 1;
 let panX = 0;
@@ -49,18 +42,16 @@ let isDraggingEntity = false;
 let isResizingEntity = false;
 let dragStartX = 0;
 let dragStartY = 0;
-let selectedEntityId: string | null = null;
-let resizeHandle: string | null = null;
-
+let selectedEntityId = null;
+let resizeHandle = null;
 // Context menu state
-let contextMenu: HTMLDivElement | null = null;
+let contextMenu = null;
 let contextClickScreenX = 0;
 let contextClickScreenY = 0;
-
 // Vector font glyphs (stroke font). Each glyph is a sequence of commands:
 // 'M', x, y (move) and 'L', x, y (line). Coordinates are in font units.
 // Y axis is negative upward in glyph data; we flip to plotter coordinates when rendering.
-const fontGlyphs: Record<string, (string | number)[]> = {
+const fontGlyphs = {
     " ": [],
     "!": ["M", 0, -12, "L", 0, 2, "M", 0, 7, "L", -1, 8, "L", 0, 9, "L", 1, 8, "L", 0, 7],
     "&": ["M", 0, -10, "L", -1, -11, "L", 0, -12, "L", 1, -11, "L", 1, -9, "L", 0, -7, "L", -1, -6],
@@ -150,15 +141,14 @@ const fontGlyphs: Record<string, (string | number)[]> = {
     "}": ["M", -2, -16, "L", 0, -15, "L", -1, -14, "L", -2, -12, "L", -2, -10, "L", -1, -8, "L", 0, -7, "L", 1, -5, "L", 1, -3, "L", -1, -1, "M", 0, -15, "L", -1, -13, "L", -1, -11, "L", 0, -9, "L", 1, -8, "L", 2, -6, "L", 2, -4, "L", 1, -2, "L", -3, 0, "L", 1, 2, "L", 2, 4, "L", 2, 6, "L", 1, 8, "L", 0, 9, "L", -1, 11, "L", -1, 13, "L", 0, 15, "M", -1, 1, "L", 1, 3, "L", 1, 5, "L", 0, 7, "L", -1, 8, "L", -2, 10, "L", -2, 12, "L", -1, 14, "L", 0, 15, "L", 2, 16],
     "~": ["M", -9, 3, "L", -9, 1, "L", -8, -2, "L", -6, -3, "L", -4, -3, "L", -2, -2, "L", 2, 1, "L", 4, 2, "L", 6, 2, "L", 8, 1, "L", 9, -1, "M", -9, 1, "L", -8, -1, "L", -6, -2, "L", -4, -2, "L", -2, -1, "L", 2, 2, "L", 4, 3, "L", 6, 3, "L", 8, 2, "L", 9, -1, "L", 9, -3]
 };
-
-function glyphToPaths(cmds: (string | number)[], offsetX: number, offsetY: number, scale: number): [number, number][][] {
-    const paths: [number, number][][] = [];
+function glyphToPaths(cmds, offsetX, offsetY, scale) {
+    const paths = [];
     let i = 0;
-    let currentPath: [number, number][] | null = null;
+    let currentPath = null;
     while (i < cmds.length) {
-        const op = cmds[i++] as string;
-        const x = cmds[i++] as number;
-        const y = cmds[i++] as number;
+        const op = cmds[i++];
+        const x = cmds[i++];
+        const y = cmds[i++];
         const px = offsetX + x * scale;
         const py = offsetY + (-y) * scale; // flip Y for plotter coords
         if (op === 'M') {
@@ -166,10 +156,12 @@ function glyphToPaths(cmds: (string | number)[], offsetX: number, offsetY: numbe
                 paths.push(currentPath);
             }
             currentPath = [[px, py]];
-        } else if (op === 'L') {
+        }
+        else if (op === 'L') {
             if (!currentPath) {
                 currentPath = [[px, py]];
-            } else {
+            }
+            else {
                 currentPath.push([px, py]);
             }
         }
@@ -179,13 +171,11 @@ function glyphToPaths(cmds: (string | number)[], offsetX: number, offsetY: numbe
     }
     return paths;
 }
-
-function GlyphWidth(): number {
+function GlyphWidth() {
     return 15;
 }
-
-function textToPaths(text: string, originX: number, originY: number, heightMm: number = 10, letterSpacingUnits: number = 2): [number, number][][] {
-    const paths: [number, number][][] = [];
+function textToPaths(text, originX, originY, heightMm = 10, letterSpacingUnits = 2) {
+    const paths = [];
     const unitsTall = 32; // approx -16..+16
     const scale = heightMm / unitsTall;
     let cursorUnitsX = 0;
@@ -200,22 +190,13 @@ function textToPaths(text: string, originX: number, originY: number, heightMm: n
     }
     return paths;
 }
-
-// Plot entities
-interface PlotEntity {
-    id: string;
-    paths: [number, number][][]; // Array of paths, each path is array of [x, y] points
-}
-
-let entities: PlotEntity[] = [];
-
+let entities = [];
 // Helper to create a simple Pikachu character for testing
-function createPikachuPath(cx: number, cy: number, size: number): [number, number][][] {
-    const paths: [number, number][][] = [];
+function createPikachuPath(cx, cy, size) {
+    const paths = [];
     const scale = size / 100; // Scale factor
-
     // Head (circle with slight oval shape)
-    const headPath: [number, number][] = [];
+    const headPath = [];
     for (let i = 0; i <= 32; i++) {
         const angle = (i / 32) * Math.PI * 2;
         const x = cx + Math.cos(angle) * 25 * scale;
@@ -223,25 +204,22 @@ function createPikachuPath(cx: number, cy: number, size: number): [number, numbe
         headPath.push([x, y]);
     }
     paths.push(headPath);
-
     // Left ear
-    const leftEarPath: [number, number][] = [];
+    const leftEarPath = [];
     leftEarPath.push([cx - 20 * scale, cy - 15 * scale]);
     leftEarPath.push([cx - 25 * scale, cy - 25 * scale]);
     leftEarPath.push([cx - 15 * scale, cy - 20 * scale]);
     leftEarPath.push([cx - 20 * scale, cy - 15 * scale]);
     paths.push(leftEarPath);
-
     // Right ear
-    const rightEarPath: [number, number][] = [];
+    const rightEarPath = [];
     rightEarPath.push([cx + 20 * scale, cy - 15 * scale]);
     rightEarPath.push([cx + 25 * scale, cy - 25 * scale]);
     rightEarPath.push([cx + 15 * scale, cy - 20 * scale]);
     rightEarPath.push([cx + 20 * scale, cy - 15 * scale]);
     paths.push(rightEarPath);
-
     // Left eye
-    const leftEyePath: [number, number][] = [];
+    const leftEyePath = [];
     for (let i = 0; i <= 16; i++) {
         const angle = (i / 16) * Math.PI * 2;
         const x = cx - 8 * scale + Math.cos(angle) * 3 * scale;
@@ -249,9 +227,8 @@ function createPikachuPath(cx: number, cy: number, size: number): [number, numbe
         leftEyePath.push([x, y]);
     }
     paths.push(leftEyePath);
-
     // Right eye
-    const rightEyePath: [number, number][] = [];
+    const rightEyePath = [];
     for (let i = 0; i <= 16; i++) {
         const angle = (i / 16) * Math.PI * 2;
         const x = cx + 8 * scale + Math.cos(angle) * 3 * scale;
@@ -259,17 +236,15 @@ function createPikachuPath(cx: number, cy: number, size: number): [number, numbe
         rightEyePath.push([x, y]);
     }
     paths.push(rightEyePath);
-
     // Nose (triangle)
-    const nosePath: [number, number][] = [];
+    const nosePath = [];
     nosePath.push([cx, cy + 2 * scale]);
     nosePath.push([cx - 2 * scale, cy + 5 * scale]);
     nosePath.push([cx + 2 * scale, cy + 5 * scale]);
     nosePath.push([cx, cy + 2 * scale]);
     paths.push(nosePath);
-
     // Mouth (smile)
-    const mouthPath: [number, number][] = [];
+    const mouthPath = [];
     for (let i = 0; i <= 16; i++) {
         const angle = Math.PI + (i / 16) * Math.PI; // Half circle
         const x = cx + Math.cos(angle) * 8 * scale;
@@ -277,9 +252,8 @@ function createPikachuPath(cx: number, cy: number, size: number): [number, numbe
         mouthPath.push([x, y]);
     }
     paths.push(mouthPath);
-
     // Body (oval)
-    const bodyPath: [number, number][] = [];
+    const bodyPath = [];
     for (let i = 0; i <= 32; i++) {
         const angle = (i / 32) * Math.PI * 2;
         const x = cx + Math.cos(angle) * 18 * scale;
@@ -287,67 +261,58 @@ function createPikachuPath(cx: number, cy: number, size: number): [number, numbe
         bodyPath.push([x, y]);
     }
     paths.push(bodyPath);
-
     // Left arm
-    const leftArmPath: [number, number][] = [];
+    const leftArmPath = [];
     leftArmPath.push([cx - 18 * scale, cy + 20 * scale]);
     leftArmPath.push([cx - 30 * scale, cy + 35 * scale]);
     leftArmPath.push([cx - 25 * scale, cy + 40 * scale]);
     leftArmPath.push([cx - 15 * scale, cy + 30 * scale]);
     paths.push(leftArmPath);
-
     // Right arm
-    const rightArmPath: [number, number][] = [];
+    const rightArmPath = [];
     rightArmPath.push([cx + 18 * scale, cy + 20 * scale]);
     rightArmPath.push([cx + 30 * scale, cy + 35 * scale]);
     rightArmPath.push([cx + 25 * scale, cy + 40 * scale]);
     rightArmPath.push([cx + 15 * scale, cy + 30 * scale]);
     paths.push(rightArmPath);
-
     // Left leg
-    const leftLegPath: [number, number][] = [];
+    const leftLegPath = [];
     leftLegPath.push([cx - 8 * scale, cy + 40 * scale]);
     leftLegPath.push([cx - 12 * scale, cy + 55 * scale]);
     leftLegPath.push([cx - 5 * scale, cy + 60 * scale]);
     leftLegPath.push([cx - 2 * scale, cy + 50 * scale]);
     paths.push(leftLegPath);
-
     // Right leg
-    const rightLegPath: [number, number][] = [];
+    const rightLegPath = [];
     rightLegPath.push([cx + 8 * scale, cy + 40 * scale]);
     rightLegPath.push([cx + 12 * scale, cy + 55 * scale]);
     rightLegPath.push([cx + 5 * scale, cy + 60 * scale]);
     rightLegPath.push([cx + 2 * scale, cy + 50 * scale]);
     paths.push(rightLegPath);
-
     // Tail (zigzag)
-    const tailPath: [number, number][] = [];
+    const tailPath = [];
     tailPath.push([cx + 18 * scale, cy + 25 * scale]);
     tailPath.push([cx + 35 * scale, cy + 15 * scale]);
     tailPath.push([cx + 30 * scale, cy + 5 * scale]);
     tailPath.push([cx + 45 * scale, cy - 5 * scale]);
     tailPath.push([cx + 40 * scale, cy - 15 * scale]);
     paths.push(tailPath);
-
     return paths;
 }
 // Helper to create a circle as paths
-function createCirclePaths(cx: number, cy: number, radius: number): [number, number][][] {
-    const path: [number, number][] = [];
+function createCirclePaths(cx, cy, radius) {
+    const path = [];
     const segments = 64;
-
     for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * Math.PI * 2;
         const x = cx + Math.cos(angle) * radius;
         const y = cy + Math.sin(angle) * radius;
         path.push([x, y]);
     }
-
     return [path]; // Return as array of paths (single path for a circle)
 }
-
-function createSquarePath(cx: number, cy: number, size: number): [number, number][][] {
-    const path: [number, number][] = [];
+function createSquarePath(cx, cy, size) {
+    const path = [];
     path.push([cx, cy]);
     path.push([cx + size, cy]);
     path.push([cx + size, cy + size]);
@@ -355,113 +320,97 @@ function createSquarePath(cx: number, cy: number, size: number): [number, number
     path.push([cx, cy]);
     return [path];
 }
-
 // Helper to create axes with arrowheads
-function createAxesPaths(cx: number, cy: number, length: number = 100, arrow: number = 10): [number, number][][] {
-    const paths: [number, number][][] = [];
-
+function createAxesPaths(cx, cy, length = 100, arrow = 10) {
+    const paths = [];
     // X axis line
-    const xEnd: [number, number] = [cx + length, cy];
+    const xEnd = [cx + length, cy];
     paths.push([[cx, cy], xEnd]);
     // X axis arrowheads
     paths.push([xEnd, [xEnd[0] - arrow, xEnd[1] + arrow * 0.3]]);
     paths.push([xEnd, [xEnd[0] - arrow, xEnd[1] - arrow * 0.3]]);
-
     // Y axis line
-    const yEnd: [number, number] = [cx, cy + length];
+    const yEnd = [cx, cy + length];
     paths.push([[cx, cy], yEnd]);
     // Y axis arrowheads
     paths.push([yEnd, [yEnd[0] + arrow * 0.3, yEnd[1] - arrow]]);
     paths.push([yEnd, [yEnd[0] - arrow * 0.3, yEnd[1] - arrow]]);
-
     return paths;
 }
-
 // Initialize the application
-async function init(): Promise<void> {
+async function init() {
     setupEventListeners();
     setupCanvas();
     updateConnectionStatus(false, 'Disconnected');
     console.log('Plotter interface initialized');
 }
-
 // Cleanup on page unload/reload
 window.addEventListener('beforeunload', async () => {
     if (isConnected) {
         console.log('Cleaning up serial connection before unload...');
         try {
             await window.electronAPI.disconnectSerial();
-        } catch (error) {
+        }
+        catch (error) {
             console.error('Error during cleanup:', error);
         }
     }
 });
-
 // Setup event listeners
-function setupEventListeners(): void {
+function setupEventListeners() {
     // Status button (acts as connect/disconnect)
     statusBtn.addEventListener('click', handleConnect);
-
     // Plotter control buttons
     penUpBtn.addEventListener('click', handlePenUp);
     penDownBtn.addEventListener('click', handlePenDown);
     plotBtn.addEventListener('click', handlePlot);
     stopBtn.addEventListener('click', handleStop);
     disengageBtn.addEventListener('click', handleDisengage);
-
     // Slider listeners
     penUpSlider.addEventListener('input', (e) => {
-        const value = (e.target as HTMLInputElement).value;
+        const value = e.target.value;
         penUpValue.textContent = value;
     });
-
     penUpSlider.addEventListener('change', async (e) => {
-        const value = parseInt((e.target as HTMLInputElement).value);
+        const value = parseInt(e.target.value);
         await handleSetPenUpPosition(value);
     });
-
     penDownSlider.addEventListener('input', (e) => {
-        const value = (e.target as HTMLInputElement).value;
+        const value = e.target.value;
         penDownValue.textContent = value;
     });
-
     penDownSlider.addEventListener('change', async (e) => {
-        const value = parseInt((e.target as HTMLInputElement).value);
+        const value = parseInt(e.target.value);
         await handleSetPenDownPosition(value);
     });
-
     speedSlider.addEventListener('input', (e) => {
-        const value = (e.target as HTMLInputElement).value;
+        const value = e.target.value;
         speedValue.textContent = value;
     });
-
     speedSlider.addEventListener('change', async (e) => {
-        const value = parseInt((e.target as HTMLInputElement).value);
+        const value = parseInt(e.target.value);
         await handleSetSpeed(value);
     });
-
     // Add event listener for moving speed slider
     movingSpeedSlider.addEventListener('input', (e) => {
-        const value = (e.target as HTMLInputElement).value;
+        const value = e.target.value;
         movingSpeedValue.textContent = value;
     });
-
     // Add handler for setting moving speed
-    async function handleSetMovingSpeed(value: number): Promise<void> {
+    async function handleSetMovingSpeed(value) {
         try {
             await window.electronAPI.setMovingSpeed(value);
             console.log('Moving speed set to:', value);
-        } catch (error) {
+        }
+        catch (error) {
             console.error('Failed to set moving speed:', error);
         }
     }
-
     // Add event listener for moving speed slider change
     movingSpeedSlider.addEventListener('change', async (e) => {
-        const value = parseInt((e.target as HTMLInputElement).value);
+        const value = parseInt(e.target.value);
         await handleSetMovingSpeed(value);
     });
-
     // Canvas interactions
     plotCanvas.addEventListener('wheel', handleWheel, { passive: false });
     plotCanvas.addEventListener('mousedown', handleMouseDown);
@@ -470,290 +419,274 @@ function setupEventListeners(): void {
     plotCanvas.addEventListener('mouseleave', handleMouseUp);
     plotCanvas.addEventListener('dblclick', handleDoubleClick);
     plotCanvas.addEventListener('contextmenu', handleContextMenu);
-
     // Hide context menu on any left-click or scroll elsewhere
     document.addEventListener('click', () => hideContextMenu());
     plotCanvas.addEventListener('wheel', () => hideContextMenu());
-
     // Listen for serial data
     window.electronAPI.onSerialData(handleSerialData);
 }
-
 // Plotter Control Functions
-async function handlePenUp(): Promise<void> {
+async function handlePenUp() {
     try {
         penUpBtn.disabled = true;
         const result = await window.electronAPI.plotterPenUp();
         if (!result.success) {
             console.error('Pen up failed:', result.error);
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error sending pen up:', error);
-    } finally {
+    }
+    finally {
         penUpBtn.disabled = false;
     }
 }
-
-async function handlePenDown(): Promise<void> {
+async function handlePenDown() {
     try {
         penDownBtn.disabled = true;
         const result = await window.electronAPI.plotterPenDown();
         if (!result.success) {
             console.error('Pen down failed:', result.error);
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error sending pen down:', error);
-    } finally {
+    }
+    finally {
         penDownBtn.disabled = false;
     }
 }
-
-async function handlePlot(): Promise<void> {
+async function handlePlot() {
     try {
         plotBtn.disabled = true;
         plotBtn.textContent = 'Plotting...';
-
         // Convert entities to paths
         let paths = entitiesToPaths(entities);
-
         // Add debug axes if enabled
         if (debugAxesCheckbox.checked) {
             console.log('Adding debug axes (10cm X and Y)');
-            const xAxisPath: [number, number][] = [[0, 0], [100, 0]]; // 10cm along X
-            const yAxisPath: [number, number][] = [[0, 0], [0, 100]]; // 10cm along Y
-
+            const xAxisPath = [[0, 0], [100, 0]]; // 10cm along X
+            const yAxisPath = [[0, 0], [0, 100]]; // 10cm along Y
             // Prepend axes to the beginning
             paths = [xAxisPath, yAxisPath, ...paths];
         }
-
         if (paths.length === 0) {
             console.warn('No entities to plot');
             alert('No entities to plot. Double-click on the canvas to add circles.');
             return;
         }
-
         console.log(`Plotting ${paths.length} paths from ${entities.length} entities`);
-
         // Send paths to plotter
         const result = await window.electronAPI.plotterPlotPath(paths, true);
-
         if (result.success) {
             console.log('Paths queued successfully');
-
             // Start queue consumption
             await window.electronAPI.plotterStartQueue();
             console.log('Queue consumption started');
-        } else {
+        }
+        else {
             console.error('Plot path failed:', result.error);
             alert('Failed to plot: ' + result.error);
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error plotting:', error);
         alert('Error plotting: ' + error);
-    } finally {
+    }
+    finally {
         plotBtn.disabled = false;
         plotBtn.textContent = 'PLOT';
     }
 }
-
-async function handleStop(): Promise<void> {
+async function handleStop() {
     try {
         stopBtn.disabled = true;
         stopBtn.textContent = 'Stopping...';
-
         console.log('Stopping plot...');
-
         // Stop queue consumption
         await window.electronAPI.plotterStopQueue();
-
         // Reset the plotter state
         await window.electronAPI.plotterReset();
-
         // Pen up
         await window.electronAPI.plotterPenUp();
-
         console.log('Plot stopped and reset');
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error stopping plot:', error);
         alert('Error stopping: ' + error);
-    } finally {
+    }
+    finally {
         stopBtn.disabled = false;
         stopBtn.textContent = 'STOP';
     }
 }
-
-async function handleDisengage(): Promise<void> {
+async function handleDisengage() {
     try {
         disengageBtn.disabled = true;
         const result = await window.electronAPI.plotterDisengage();
         if (!result.success) {
             console.error('Disengage failed:', result.error);
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error disengaging motors:', error);
-    } finally {
+    }
+    finally {
         disengageBtn.disabled = false;
     }
 }
-
-async function handleSetPenUpPosition(value: number): Promise<void> {
+async function handleSetPenUpPosition(value) {
     try {
         const result = await window.electronAPI.plotterSetPenUpValue(value);
         if (!result.success) {
             console.error('Set pen up position failed:', result.error);
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error setting pen up position:', error);
     }
 }
-
-async function handleSetPenDownPosition(value: number): Promise<void> {
+async function handleSetPenDownPosition(value) {
     try {
         const result = await window.electronAPI.plotterSetPenDownValue(value);
         if (!result.success) {
             console.error('Set pen down position failed:', result.error);
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error setting pen down position:', error);
     }
 }
-
-async function handleSetSpeed(value: number): Promise<void> {
+async function handleSetSpeed(value) {
     try {
         const result = await window.electronAPI.plotterSetSpeed(value);
         if (!result.success) {
             console.error('Set speed failed:', result.error);
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error setting speed:', error);
     }
 }
-
 // Manual connect/disconnect handler
-async function handleConnect(): Promise<void> {
+async function handleConnect() {
     if (isConnected) {
         // Disconnect
         try {
             statusBtn.disabled = true;
             updateConnectionStatus(false, 'Disconnecting...');
-
             const result = await window.electronAPI.disconnectSerial();
-
             if (result.success) {
                 isConnected = false;
                 selectedPort = null;
                 updateConnectionStatus(false, 'Disconnected');
                 console.log('Disconnected from plotter');
-            } else {
+            }
+            else {
                 console.error('Disconnect failed:', result.error);
                 updateConnectionStatus(isConnected, selectedPort || 'Error');
             }
-        } catch (error) {
+        }
+        catch (error) {
             console.error('Disconnect error:', error);
             updateConnectionStatus(isConnected, selectedPort || 'Error');
-        } finally {
+        }
+        finally {
             statusBtn.disabled = false;
         }
-    } else {
+    }
+    else {
         // Connect
         try {
             statusBtn.disabled = true;
             updateConnectionStatus(false, 'Searching...');
-
             const plotterPort = await window.electronAPI.findPlotterPort();
-
             if (plotterPort) {
                 console.log('Found plotter port:', plotterPort.path);
                 updateConnectionStatus(false, 'Connecting...');
-
                 const result = await window.electronAPI.connectSerial(plotterPort.path, 115200);
-
                 if (result.success) {
                     isConnected = true;
                     selectedPort = plotterPort.path;
                     updateConnectionStatus(true, plotterPort.path);
                     console.log('Connected to plotter:', plotterPort.path);
-
                     // Initialize plotter with servo settings
                     await initializePlotter();
-                } else {
+                }
+                else {
                     console.error('Connection failed:', result.error);
                     updateConnectionStatus(false, 'Failed');
                 }
-            } else {
+            }
+            else {
                 console.log('No plotter port found');
                 updateConnectionStatus(false, 'Not Found');
             }
-        } catch (error) {
+        }
+        catch (error) {
             console.error('Connect failed:', error);
             updateConnectionStatus(false, 'Error');
-        } finally {
+        }
+        finally {
             statusBtn.disabled = false;
         }
     }
 }
-
 // Initialize plotter with current slider values
-async function initializePlotter(): Promise<void> {
+async function initializePlotter() {
     try {
         // Get current plotter state
         const state = await window.electronAPI.plotterGetState();
-
         // Update sliders to match plotter state
         penUpSlider.value = state.penUpPosition.toString();
         penUpValue.textContent = state.penUpPosition.toString();
-
         penDownSlider.value = state.penDownPosition.toString();
         penDownValue.textContent = state.penDownPosition.toString();
-
         speedSlider.value = state.speed.toString();
         speedValue.textContent = state.speed.toString();
-
         // Send initialization commands to plotter
         const result = await window.electronAPI.plotterInitialize();
-
         if (result.success) {
             console.log('Plotter initialized successfully');
-
             // Reset position to (0,0) on connection
             console.log('Setting plotter position to origin (0,0)...');
             await window.electronAPI.plotterSetOrigin();
-
             // Query actual position from EBB to sync with hardware
             const positionResult = await window.electronAPI.plotterGetPosition();
             if (positionResult.success && positionResult.position) {
                 console.log(`Plotter actual position: [${positionResult.position[0].toFixed(2)}, ${positionResult.position[1].toFixed(2)}]mm`);
-            } else {
+            }
+            else {
                 console.log('Could not query plotter position, assuming (0,0)');
             }
-        } else {
+        }
+        else {
             console.error('Plotter initialization failed:', result.error);
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error initializing plotter:', error);
     }
 }
-
 // Update connection status display
-function updateConnectionStatus(connected: boolean, text?: string): void {
+function updateConnectionStatus(connected, text) {
     if (connected) {
         statusIndicator.classList.remove('disconnected');
         statusIndicator.classList.add('connected');
         statusBtn.textContent = text || 'Connected';
         plotterControls.style.display = 'block';
-    } else {
+    }
+    else {
         statusIndicator.classList.remove('connected');
         statusIndicator.classList.add('disconnected');
         statusBtn.textContent = text || 'Disconnected';
         plotterControls.style.display = 'none';
     }
 }
-
 // Handle incoming serial data
-function handleSerialData(data: any): void {
+function handleSerialData(data) {
     totalBytesReceived += data.length;
     dataReceivedSpan.textContent = `${totalBytesReceived} bytes`;
-
     // Update sample rate
     sampleCount++;
     const now = Date.now();
@@ -764,68 +697,55 @@ function handleSerialData(data: any): void {
         sampleCount = 0;
         lastSampleTime = now;
     }
-
     // Parse and store data (placeholder for actual plotting logic)
     try {
         const value = parseFloat(data.toString().trim());
         if (!isNaN(value)) {
             lastValueSpan.textContent = value.toFixed(2);
             dataBuffer.push(value);
-
             // Limit buffer size
             const maxPoints = 1000;
             if (dataBuffer.length > maxPoints) {
                 dataBuffer.shift();
             }
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error parsing data:', error);
     }
 }
-
 // Clear data buffers
-function clearData(): void {
+function clearData() {
     dataBuffer = [];
     totalBytesReceived = 0;
     sampleCount = 0;
     lastSampleTime = Date.now();
-
     dataReceivedSpan.textContent = '0 bytes';
     sampleRateSpan.textContent = '0 Hz';
     lastValueSpan.textContent = '—';
-
     console.log('Data cleared');
 }
-
 // Canvas setup and rendering
-function setupCanvas(): void {
-    const container = plotCanvas.parentElement!;
+function setupCanvas() {
+    const container = plotCanvas.parentElement;
     plotCanvas.width = container.clientWidth;
     plotCanvas.height = container.clientHeight;
-
     // Hide placeholder, show canvas
     plotPlaceholder.style.display = 'none';
     plotCanvas.style.display = 'block';
-
     // Position viewport so (0,0) is bottom-left of A3 paper
     // Center the paper on screen with some padding
     const padding = 50;
     panX = padding;
     panY = plotCanvas.height - padding;
-    zoom = Math.min(
-        (plotCanvas.width - padding * 2) / A3_WIDTH_MM,
-        (plotCanvas.height - padding * 2) / A3_HEIGHT_MM
-    );
-
+    zoom = Math.min((plotCanvas.width - padding * 2) / A3_WIDTH_MM, (plotCanvas.height - padding * 2) / A3_HEIGHT_MM);
     // Remove the test circle - the 1cm grid is already drawn in drawA3Paper()
     // entities.push({
     //     id: 'circle1',
     //     paths: createCirclePaths(60, 60, 40) // Circle at (60, 60) from bottom-left with radius 40
     // });
-
     // Start render loop
     requestAnimationFrame(render);
-
     // Handle window resize
     window.addEventListener('resize', () => {
         plotCanvas.width = container.clientWidth;
@@ -833,52 +753,39 @@ function setupCanvas(): void {
         render();
     });
 }
-
-function render(): void {
-    const ctx = plotCanvas.getContext('2d')!;
+function render() {
+    const ctx = plotCanvas.getContext('2d');
     ctx.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
-
     // Fill background
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, plotCanvas.width, plotCanvas.height);
-
     ctx.save();
     ctx.translate(panX, panY);
     ctx.scale(zoom, zoom);
-
     // Draw A3 paper
     drawA3Paper(ctx);
-
     // Draw entities
     entities.forEach(entity => {
         drawEntity(ctx, entity, entity.id === selectedEntityId);
     });
-
     ctx.restore();
-
     requestAnimationFrame(render);
 }
-
-function drawA3Paper(ctx: CanvasRenderingContext2D): void {
+function drawA3Paper(ctx) {
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#666';
     ctx.lineWidth = 2 / zoom;
-
     // Paper origin at (0, 0) - bottom-left corner in plotter coordinates
     // Canvas Y increases downward, so we need to flip for plotter coords
     ctx.save();
     ctx.scale(1, -1); // Flip Y axis so plotter (0,0) is bottom-left
-
     const x = 0;
     const y = 0;
-
     ctx.fillRect(x, y, A3_WIDTH_MM, A3_HEIGHT_MM);
     ctx.strokeRect(x, y, A3_WIDTH_MM, A3_HEIGHT_MM);
-
     // Draw grid
     ctx.strokeStyle = '#e0e0e0';
     ctx.lineWidth = 0.5 / zoom;
-
     const gridSize = 10; // 10mm grid
     for (let i = x; i <= x + A3_WIDTH_MM; i += gridSize) {
         ctx.beginPath();
@@ -886,14 +793,12 @@ function drawA3Paper(ctx: CanvasRenderingContext2D): void {
         ctx.lineTo(i, y + A3_HEIGHT_MM);
         ctx.stroke();
     }
-
     for (let i = y; i <= y + A3_HEIGHT_MM; i += gridSize) {
         ctx.beginPath();
         ctx.moveTo(x, i);
         ctx.lineTo(x + A3_WIDTH_MM, i);
         ctx.stroke();
     }
-
     // Draw origin marker
     ctx.strokeStyle = '#ff0000';
     ctx.lineWidth = 2 / zoom;
@@ -903,41 +808,33 @@ function drawA3Paper(ctx: CanvasRenderingContext2D): void {
     ctx.moveTo(0, 0);
     ctx.lineTo(0, 20);
     ctx.stroke();
-
     ctx.restore();
 }
-
-function drawEntity(ctx: CanvasRenderingContext2D, entity: PlotEntity, isSelected: boolean): void {
+function drawEntity(ctx, entity, isSelected) {
     ctx.save();
-
     // Flip Y axis to match plotter coordinates (0,0 at bottom-left)
     ctx.scale(1, -1);
-
     // Draw all paths in the entity
     entity.paths.forEach(path => {
-        if (path.length === 0) return;
-
+        if (path.length === 0)
+            return;
         ctx.beginPath();
         ctx.moveTo(path[0][0], path[0][1]);
-
         for (let i = 1; i < path.length; i++) {
             ctx.lineTo(path[i][0], path[i][1]);
         }
-
         ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
         ctx.fill();
         ctx.strokeStyle = '#3b82f6';
         ctx.lineWidth = 2 / zoom;
         ctx.stroke();
     });
-
     if (isSelected) {
         // Draw bounding box
         const bounds = getEntityBounds(entity);
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 2 / zoom;
         ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
-
         // Draw resize handles
         const handleSize = 8 / zoom;
         ctx.fillStyle = '#ef4444';
@@ -946,14 +843,11 @@ function drawEntity(ctx: CanvasRenderingContext2D, entity: PlotEntity, isSelecte
             ctx.fillRect(h.x - handleSize / 2, h.y - handleSize / 2, handleSize, handleSize);
         });
     }
-
     ctx.restore();
 }
-
 // Calculate bounding box for entity
-function getEntityBounds(entity: PlotEntity): { x: number; y: number; width: number; height: number } {
+function getEntityBounds(entity) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
     entity.paths.forEach(path => {
         path.forEach(([x, y]) => {
             minX = Math.min(minX, x);
@@ -962,7 +856,6 @@ function getEntityBounds(entity: PlotEntity): { x: number; y: number; width: num
             maxY = Math.max(maxY, y);
         });
     });
-
     return {
         x: minX,
         y: minY,
@@ -970,8 +863,7 @@ function getEntityBounds(entity: PlotEntity): { x: number; y: number; width: num
         height: maxY - minY
     };
 }
-
-function getResizeHandles(bounds: { x: number; y: number; width: number; height: number }): { id: string; x: number; y: number }[] {
+function getResizeHandles(bounds) {
     return [
         { id: 'nw', x: bounds.x, y: bounds.y },
         { id: 'ne', x: bounds.x + bounds.width, y: bounds.y },
@@ -979,24 +871,20 @@ function getResizeHandles(bounds: { x: number; y: number; width: number; height:
         { id: 'se', x: bounds.x + bounds.width, y: bounds.y + bounds.height },
     ];
 }
-
 // Mouse interaction handlers
-function handleWheel(e: WheelEvent): void {
+function handleWheel(e) {
     e.preventDefault();
     const rect = plotCanvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-
     const delta = -e.deltaY * 0.001;
     const oldZoom = zoom;
     zoom = Math.max(0.1, Math.min(10, zoom * (1 + delta)));
-
     // Zoom toward mouse position
     panX = mouseX - (mouseX - panX) * (zoom / oldZoom);
     panY = mouseY - (mouseY - panY) * (zoom / oldZoom);
 }
-
-function handleMouseDown(e: MouseEvent): void {
+function handleMouseDown(e) {
     // Ignore right-click for dragging; it's reserved for context menu
     if (e.button === 2) {
         return;
@@ -1005,10 +893,8 @@ function handleMouseDown(e: MouseEvent): void {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
     const [worldX, worldY] = screenToWorld(mouseX, mouseY);
-
     dragStartX = mouseX;
     dragStartY = mouseY;
-
     // Check if clicking on resize handle
     if (selectedEntityId) {
         const entity = entities.find(ent => ent.id === selectedEntityId);
@@ -1022,30 +908,29 @@ function handleMouseDown(e: MouseEvent): void {
             }
         }
     }
-
     // Check if clicking on entity
     const clickedEntity = getEntityAtPosition(worldX, worldY);
     if (clickedEntity) {
         selectedEntityId = clickedEntity.id;
         isDraggingEntity = true;
-    } else {
+    }
+    else {
         selectedEntityId = null;
         isDraggingViewport = true;
     }
 }
-
-function handleMouseMove(e: MouseEvent): void {
+function handleMouseMove(e) {
     const rect = plotCanvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
     const [worldX, worldY] = screenToWorld(mouseX, mouseY);
-
     if (isDraggingViewport) {
         panX += mouseX - dragStartX;
         panY += mouseY - dragStartY;
         dragStartX = mouseX;
         dragStartY = mouseY;
-    } else if (isDraggingEntity && selectedEntityId) {
+    }
+    else if (isDraggingEntity && selectedEntityId) {
         const entity = entities.find(e => e.id === selectedEntityId);
         if (entity) {
             const dx = (mouseX - dragStartX) / zoom;
@@ -1054,39 +939,35 @@ function handleMouseMove(e: MouseEvent): void {
             dragStartX = mouseX;
             dragStartY = mouseY;
         }
-    } else if (isResizingEntity && selectedEntityId && resizeHandle) {
+    }
+    else if (isResizingEntity && selectedEntityId && resizeHandle) {
         const entity = entities.find(e => e.id === selectedEntityId);
         if (entity) {
             scaleEntity(entity, resizeHandle, worldX, worldY);
         }
     }
-
     // Update cursor
     updateCursor(worldX, worldY);
 }
-
-function handleMouseUp(): void {
+function handleMouseUp() {
     isDraggingViewport = false;
     isDraggingEntity = false;
     isResizingEntity = false;
     resizeHandle = null;
 }
-
-function handleDoubleClick(e: MouseEvent): void {
+function handleDoubleClick(e) {
     const rect = plotCanvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
     const [worldX, worldY] = screenToWorld(mouseX, mouseY);
-
     // Add new circle at click position
-    const newCircle: PlotEntity = {
+    const newCircle = {
         id: `circle${Date.now()}`,
         paths: createSquarePath(worldX, worldY, 40)
     };
     entities.push(newCircle);
 }
-
-function handleContextMenu(e: MouseEvent): void {
+function handleContextMenu(e) {
     e.preventDefault();
     const rect = plotCanvas.getBoundingClientRect();
     contextClickScreenX = e.clientX - rect.left;
@@ -1094,10 +975,8 @@ function handleContextMenu(e: MouseEvent): void {
     const [worldX, worldY] = screenToWorld(contextClickScreenX, contextClickScreenY);
     showContextMenu(e.clientX, e.clientY, worldX, worldY);
 }
-
-function showContextMenu(screenX: number, screenY: number, worldX: number, worldY: number): void {
+function showContextMenu(screenX, screenY, worldX, worldY) {
     hideContextMenu();
-
     contextMenu = document.createElement('div');
     contextMenu.style.position = 'fixed';
     contextMenu.style.left = `${screenX}px`;
@@ -1109,8 +988,7 @@ function showContextMenu(screenX: number, screenY: number, worldX: number, world
     contextMenu.style.zIndex = '9999';
     contextMenu.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
     contextMenu.style.minWidth = '160px';
-
-    const addButton = (label: string, onClick: () => void) => {
+    const addButton = (label, onClick) => {
         const btn = document.createElement('button');
         btn.textContent = label;
         btn.style.display = 'block';
@@ -1129,33 +1007,29 @@ function showContextMenu(screenX: number, screenY: number, worldX: number, world
             onClick();
             hideContextMenu();
         };
-        contextMenu!.appendChild(btn);
+        contextMenu.appendChild(btn);
     };
-
     addButton('Add Square', () => {
-        const newSquare: PlotEntity = {
+        const newSquare = {
             id: `square${Date.now()}`,
             paths: createSquarePath(worldX, worldY, 40)
         };
         entities.push(newSquare);
     });
-
     addButton('Add Circle', () => {
-        const newCircle: PlotEntity = {
+        const newCircle = {
             id: `circle${Date.now()}`,
             paths: createCirclePaths(worldX, worldY, 40)
         };
         entities.push(newCircle);
     });
-
     addButton('Add Axes', () => {
-        const newAxes: PlotEntity = {
+        const newAxes = {
             id: `axes${Date.now()}`,
             paths: createAxesPaths(worldX, worldY, 100, 10)
         };
         entities.push(newAxes);
     });
-
     addButton('Add Date/Time', () => {
         const now = new Date();
         const yyyy = now.getFullYear();
@@ -1165,45 +1039,39 @@ function showContextMenu(screenX: number, screenY: number, worldX: number, world
         const min = String(now.getMinutes()).padStart(2, '0');
         const text = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
         const textPaths = textToPaths(text, worldX, worldY, 12);
-        const newText: PlotEntity = {
+        const newText = {
             id: `text${Date.now()}`,
             paths: textPaths
         };
         entities.push(newText);
     });
-
     addButton('pikachu', () => {
-        const newPikachu: PlotEntity = {
+        const newPikachu = {
             id: `pikachu${Date.now()}`,
             paths: createPikachuPath(worldX, worldY, 40)
         };
         entities.push(newPikachu);
     });
-
     document.body.appendChild(contextMenu);
 }
-
-function hideContextMenu(): void {
+function hideContextMenu() {
     if (contextMenu && contextMenu.parentElement) {
         contextMenu.parentElement.removeChild(contextMenu);
     }
     contextMenu = null;
 }
-
-function screenToWorld(screenX: number, screenY: number): [number, number] {
+function screenToWorld(screenX, screenY) {
     // Convert screen to plotter coordinates (0,0 at bottom-left)
     // Screen Y increases downward, plotter Y increases upward
     return [
         (screenX - panX) / zoom,
-        -(screenY - panY) / zoom  // Flip Y
+        -(screenY - panY) / zoom // Flip Y
     ];
 }
-
-function getEntityAtPosition(x: number, y: number): PlotEntity | null {
+function getEntityAtPosition(x, y) {
     for (let i = entities.length - 1; i >= 0; i--) {
         const entity = entities[i];
         const bounds = getEntityBounds(entity);
-
         // Simple bounding box check
         if (x >= bounds.x && x <= bounds.x + bounds.width &&
             y >= bounds.y && y <= bounds.y + bounds.height) {
@@ -1212,11 +1080,9 @@ function getEntityAtPosition(x: number, y: number): PlotEntity | null {
     }
     return null;
 }
-
-function getHandleAtPosition(bounds: { x: number; y: number; width: number; height: number }, x: number, y: number): string | null {
+function getHandleAtPosition(bounds, x, y) {
     const handleSize = 8 / zoom;
     const handles = getResizeHandles(bounds);
-
     for (const handle of handles) {
         if (Math.abs(x - handle.x) < handleSize && Math.abs(y - handle.y) < handleSize) {
             return handle.id;
@@ -1224,22 +1090,16 @@ function getHandleAtPosition(bounds: { x: number; y: number; width: number; heig
     }
     return null;
 }
-
 // Translate (move) an entity
-function translateEntity(entity: PlotEntity, dx: number, dy: number): void {
-    entity.paths = entity.paths.map(path =>
-        path.map(([x, y]) => [x + dx, y + dy] as [number, number])
-    );
+function translateEntity(entity, dx, dy) {
+    entity.paths = entity.paths.map(path => path.map(([x, y]) => [x + dx, y + dy]));
 }
-
 // Scale an entity from a resize handle (maintains aspect ratio)
-function scaleEntity(entity: PlotEntity, handle: string, worldX: number, worldY: number): void {
+function scaleEntity(entity, handle, worldX, worldY) {
     const oldBounds = getEntityBounds(entity);
     const minSize = 10;
-
     let newBounds = { ...oldBounds };
-    let scaleFactor: number;
-
+    let scaleFactor;
     switch (handle) {
         case 'se':
             // Calculate scale based on distance from opposite corner
@@ -1278,18 +1138,14 @@ function scaleEntity(entity: PlotEntity, handle: string, worldX: number, worldY:
             newBounds.y = oldBounds.y + oldBounds.height - newBounds.height;
             break;
     }
-
     // Transform all paths using uniform scaling
-    entity.paths = entity.paths.map(path =>
-        path.map(([x, y]) => {
-            const relX = (x - oldBounds.x) * scaleFactor;
-            const relY = (y - oldBounds.y) * scaleFactor;
-            return [newBounds.x + relX, newBounds.y + relY] as [number, number];
-        })
-    );
+    entity.paths = entity.paths.map(path => path.map(([x, y]) => {
+        const relX = (x - oldBounds.x) * scaleFactor;
+        const relY = (y - oldBounds.y) * scaleFactor;
+        return [newBounds.x + relX, newBounds.y + relY];
+    }));
 }
-
-function updateCursor(worldX: number, worldY: number): void {
+function updateCursor(worldX, worldY) {
     if (selectedEntityId) {
         const entity = entities.find(e => e.id === selectedEntityId);
         if (entity) {
@@ -1301,42 +1157,36 @@ function updateCursor(worldX: number, worldY: number): void {
             }
         }
     }
-
     const entity = getEntityAtPosition(worldX, worldY);
     plotCanvas.style.cursor = entity ? 'move' : 'grab';
 }
-
-function getCursorForHandle(handle: string): string {
-    const cursors: Record<string, string> = {
-        'nw': 'ne-resize',  // Dragging NW corner - cursor should point NW
-        'ne': 'nw-resize',  // Dragging NE corner - cursor should point NE
-        'sw': 'se-resize',  // Dragging SW corner - cursor should point SW
-        'se': 'sw-resize'   // Dragging SE corner - cursor should point SE
+function getCursorForHandle(handle) {
+    const cursors = {
+        'nw': 'ne-resize', // Dragging NW corner - cursor should point NW
+        'ne': 'nw-resize', // Dragging NE corner - cursor should point NE
+        'sw': 'se-resize', // Dragging SW corner - cursor should point SW
+        'se': 'sw-resize' // Dragging SE corner - cursor should point SE
     };
     return cursors[handle] || 'default';
 }
-
 // Convert plot entities to plotter paths (now just flatten and round coordinates)
-function entitiesToPaths(entities: PlotEntity[]): [number, number][][] {
-    const paths: [number, number][][] = [];
-
+function entitiesToPaths(entities) {
+    const paths = [];
     entities.forEach(entity => {
         entity.paths.forEach(path => {
             if (path.length > 0) {
                 // Round all coordinates for the plotter
-                const roundedPath = path.map(([x, y]) => [Math.round(x), Math.round(y)] as [number, number]);
+                const roundedPath = path.map(([x, y]) => [Math.round(x), Math.round(y)]);
                 paths.push(roundedPath);
             }
         });
     });
-
     return paths;
 }
-
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
-} else {
+}
+else {
     init();
 }
-

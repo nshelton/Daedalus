@@ -45,29 +45,19 @@
 
                     <!-- Plotter Controls (hidden when disconnected) -->
                     <div id="plotter-controls" style="display: none;">
+
+
+                        <div class="control-group">
+                            <div class="button-group">
+                                <button id="disengage-btn" class="btn btn-secondary">Disengage Motors</button>
+                            </div>
+                        </div>
+
                         <div class="control-group">
                             <div class="button-group">
                                 <button id="pen-up-btn" class="btn btn-primary">Pen Up</button>
                                 <button id="pen-down-btn" class="btn btn-primary">Pen Down</button>
                             </div>
-                        </div>
-
-                        <div class="control-group">
-                            <div class="button-group">
-                                <button id="plot-btn" class="btn btn-primary">PLOT</button>
-                                <button id="stop-btn" class="btn btn-secondary">STOP</button>
-                            </div>
-                        </div>
-
-                        <div class="control-group">
-                            <label>
-                                <input type="checkbox" id="debug-axes-checkbox" class="checkbox">
-                                Draw Debug Axes (10cm)
-                            </label>
-                        </div>
-
-                        <div class="control-group">
-                            <button id="disengage-btn" class="btn btn-secondary">Disengage Motors</button>
                         </div>
 
                         <div class="control-group">
@@ -85,6 +75,7 @@
                                 value="15000">
                         </div>
 
+
                         <div class="control-group">
                             <label for="speed-slider">
                                 Plotting Speed: <span id="speed-value">50</span>%
@@ -98,6 +89,14 @@
                             </label>
                             <input type="range" id="moving-speed-slider" class="slider" min="1" max="100" value="75">
                         </div>
+
+                        <div class="control-group">
+                            <div class="button-group">
+                                <button id="plot-btn" class="btn btn-primary">PLOT</button>
+                                <button id="stop-btn" class="btn btn-primary">STOP</button>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </aside>
@@ -133,7 +132,7 @@
         </main>
     </div>
 
-    <script src="dist/renderer.js"></script>
+    <script type="module" src="dist-renderer/renderer/renderer.js"></script>
 </body>
 
 </html>

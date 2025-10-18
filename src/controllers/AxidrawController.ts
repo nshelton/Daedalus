@@ -1,8 +1,8 @@
 import { SerialController } from './SerialController';
-import { PlotterModel } from '../models/PlotterModel';
+import { AxidrawModel } from '../models/AxidrawModel';
 
-export class PlotterController {
-    private model: PlotterModel;
+export class AxidrawController {
+    private model: AxidrawModel;
     private serialController: SerialController;
     private responseBuffer: string = '';
     private upDownDurationMs: number = 100;
@@ -12,11 +12,13 @@ export class PlotterController {
     private finishTimeout: NodeJS.Timeout | null = null;
     private readonly PEN_UP_COMMAND = 4;
     private readonly PEN_DOWN_COMMAND = 5;
+    private readonly SP_PEN_UP_STATE = 1;
+    private readonly SP_PEN_DOWN_STATE = 0;
 
     // EiBotBoard/AxiDraw has 2032 steps per inch = 80 steps per mm
     private readonly STEPS_PER_MM = 80;
 
-    constructor(model: PlotterModel, serialController: SerialController) {
+    constructor(model: AxidrawModel, serialController: SerialController) {
         this.model = model;
         this.serialController = serialController;
         this.setupSerialDataHandler();
@@ -140,18 +142,20 @@ export class PlotterController {
 
     // EBB Command: Set pen state
     async setPenState(state: 0 | 1, duration?: number): Promise<void> {
+        console.log('Setting pen state to', state);
         // SP,<state>,<duration>
-        // state: 0 = up, 1 = down (per EBB docs)
+        // state: 0 = down (servo_min), 1 = up (servo_max)
         const dur = duration !== undefined ? duration : this.upDownDurationMs;
         await this.sendCommand(`SP,${state},${dur}`);
     }
 
     async penUp(duration?: number): Promise<void> {
-        await this.setPenState(0, duration);
+        console.log('Pen up command sent');
+        await this.setPenState(this.SP_PEN_UP_STATE, duration);
     }
 
     async penDown(duration?: number): Promise<void> {
-        await this.setPenState(1, duration);
+        await this.setPenState(this.SP_PEN_DOWN_STATE, duration);
     }
 
     // EBB Command: Stepper move
@@ -442,7 +446,7 @@ export class PlotterController {
         }
     }
 
-    getModel(): PlotterModel {
+    getModel(): AxidrawModel {
         return this.model;
     }
 }

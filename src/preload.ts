@@ -23,23 +23,17 @@ export interface SerialState {
   lastError: string | null;
 }
 
-export interface PlotEntity {
-  id: string;
-  paths: [number, number][][]; // Array of paths, each path is array of [x, y] points
-}
-
-export interface PlotterState {
+export interface AxidrawState {
   position: [number, number];
   penUpPosition: number;
   penDownPosition: number;
   speed: number;
-  movingSpeed: number; // Add new field for moving speed
+  movingSpeed: number;
   isPaused: boolean;
   commandsSent: number;
   commandsCompleted: number;
   queueLength: number;
   startTime: Date | null;
-  entities: PlotEntity[];
 }
 
 export interface OperationResult {
@@ -78,17 +72,11 @@ export interface ElectronAPI {
   plotterDisengage: () => Promise<OperationResult>;
   plotterStartQueue: () => Promise<OperationResult>;
   plotterStopQueue: () => Promise<OperationResult>;
-  plotterGetState: () => Promise<PlotterState>;
+  plotterGetState: () => Promise<AxidrawState>;
   plotterGetPosition: () => Promise<PositionResult>;
   plotterReset: () => Promise<OperationResult>;
   plotterSetOrigin: () => Promise<OperationResult>;
   setMovingSpeed: (value: number) => Promise<OperationResult>;
-
-  // Entity operations
-  plotterGetEntities: () => Promise<PlotEntity[]>;
-  plotterAddEntity: (entity: PlotEntity) => Promise<OperationResult>;
-  plotterUpdateEntity: (id: string, updates: Partial<PlotEntity>) => Promise<OperationResult>;
-  plotterRemoveEntity: (id: string) => Promise<OperationResult>;
 }
 
 // Expose protected methods that allow the renderer process to use
@@ -129,12 +117,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   plotterGetPosition: () => ipcRenderer.invoke('plotter-get-position'),
   plotterReset: () => ipcRenderer.invoke('plotter-reset'),
   plotterSetOrigin: () => ipcRenderer.invoke('plotter-set-origin'),
-  setMovingSpeed: (value: number) => ipcRenderer.invoke('set-moving-speed', value),
-
-  // Entity operations
-  plotterGetEntities: () => ipcRenderer.invoke('plotter-get-entities'),
-  plotterAddEntity: (entity: PlotEntity) => ipcRenderer.invoke('plotter-add-entity', entity),
-  plotterUpdateEntity: (id: string, updates: Partial<PlotEntity>) => ipcRenderer.invoke('plotter-update-entity', id, updates),
-  plotterRemoveEntity: (id: string) => ipcRenderer.invoke('plotter-remove-entity', id)
+  setMovingSpeed: (value: number) => ipcRenderer.invoke('set-moving-speed', value)
 } as ElectronAPI);
 

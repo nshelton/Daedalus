@@ -1,12 +1,8 @@
-/**
- * Vector font class for stroke-based text rendering
- * Contains glyph definitions and text rendering utilities
- */
-namespace Font {
+export class Font {
     // Vector font glyphs (stroke font). Each glyph is a sequence of commands:
     // 'M', x, y (move) and 'L', x, y (line). Coordinates are in font units.
     // Y axis is negative upward in glyph data; we flip to plotter coordinates when rendering.
-    const fontGlyphs: Record<string, (string | number)[]> = {
+    private fontGlyphs: Record<string, (string | number)[]> = {
         " ": [],
         "!": ["M", 0, -12, "L", 0, 2, "M", 0, 7, "L", -1, 8, "L", 0, 9, "L", 1, 8, "L", 0, 7],
         "&": ["M", 0, -10, "L", -1, -11, "L", 0, -12, "L", 1, -11, "L", 1, -9, "L", 0, -7, "L", -1, -6],
@@ -97,15 +93,7 @@ namespace Font {
         "~": ["M", -9, 3, "L", -9, 1, "L", -8, -2, "L", -6, -3, "L", -4, -3, "L", -2, -2, "L", 2, 1, "L", 4, 2, "L", 6, 2, "L", 8, 1, "L", 9, -1, "M", -9, 1, "L", -8, -1, "L", -6, -2, "L", -4, -2, "L", -2, -1, "L", 2, 2, "L", 4, 3, "L", 6, 3, "L", 8, 2, "L", 9, -1, "L", 9, -3]
     };
 
-    /**
-     * Convert glyph commands to path coordinates
-     * @param cmds Glyph command sequence
-     * @param offsetX X offset in plotter coordinates
-     * @param offsetY Y offset in plotter coordinates  
-     * @param scale Scale factor for font size
-     * @returns Array of paths, each path is array of [x, y] points
-     */
-    function glyphToPaths(cmds: (string | number)[], offsetX: number, offsetY: number, scale: number): [number, number][][] {
+    private glyphToPaths(cmds: (string | number)[], offsetX: number, offsetY: number, scale: number): [number, number][][] {
         const paths: [number, number][][] = [];
         let i = 0;
         let currentPath: [number, number][] | null = null;
@@ -133,36 +121,21 @@ namespace Font {
         }
         return paths;
     }
-    /**
-        * Measure the width of a glyph in font units
-        */
-    function measureGlyphWidthUnits(cmds: (string | number)[]): number {
-        if (!cmds || cmds.length === 0) return 10;
-        let minX = Infinity, maxX = -Infinity;
-        for (let i = 0; i < cmds.length;) {
-            i++;
-            const x = cmds[i++] as number;
-            i++;
-            minX = Math.min(minX, x);
-            maxX = Math.max(maxX, x);
-        }
-        const width = maxX - minX;
-        return isFinite(width) && width > 0 ? width : 30;
+
+    private measureGlyphWidthUnits(_cmds: (string | number)[]): number {
+        return 15;
     }
 
-    /**
-     * Convert text string to path coordinates for rendering
-     */
-    export function textToPaths(text: string, originX: number, originY: number, heightMm: number = 10, letterSpacingUnits: number = 2): [number, number][][] {
+    textToPaths(text: string, originX: number, originY: number, heightMm: number = 10, letterSpacingUnits: number = 2): [number, number][][] {
         const paths: [number, number][][] = [];
         const unitsTall = 32; // approx -16..+16
         const scale = heightMm / unitsTall;
         let cursorUnitsX = 0;
         for (const ch of text) {
-            const cmds = fontGlyphs[ch];
-            const widthUnits = cmds ? measureGlyphWidthUnits(cmds) : 10;
+            const cmds = this.fontGlyphs[ch];
+            const widthUnits = cmds ? this.measureGlyphWidthUnits(cmds) : 10;
             if (cmds && cmds.length > 0) {
-                const glyphPaths = glyphToPaths(cmds, originX + cursorUnitsX * scale, originY, scale);
+                const glyphPaths = this.glyphToPaths(cmds, originX + cursorUnitsX * scale, originY, scale);
                 glyphPaths.forEach(p => paths.push(p));
             }
             cursorUnitsX += widthUnits + letterSpacingUnits;

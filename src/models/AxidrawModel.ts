@@ -1,43 +1,36 @@
-interface PlotCommand {
+interface AxidrawCommand {
     type: 'move' | 'up' | 'down' | 'query' | 'reset';
     params?: any[];
 }
 
-export interface PlotEntity {
-    id: string;
-    paths: [number, number][][]; // Array of paths, each path is array of [x, y] points
-}
-
-interface PlotterState {
+interface AxidrawState {
     position: [number, number];
     penUpPosition: number;
     penDownPosition: number;
     speed: number;
-    movingSpeed: number; // Add new field for moving speed
+    movingSpeed: number;
     isPaused: boolean;
     commandsSent: number;
     commandsCompleted: number;
-    queue: PlotCommand[];
+    queue: AxidrawCommand[];
     startTime: Date | null;
-    entities: PlotEntity[];
 }
 
-export class PlotterModel {
-    private state: PlotterState = {
+export class AxidrawModel {
+    private state: AxidrawState = {
         position: [0, 0],
         penUpPosition: 16000,  // Default from EBB docs (1.33ms)
         penDownPosition: 12000, // Typical down position
         speed: 1000,
-        movingSpeed: 2000, // Add default moving speed (faster than plotting)
+        movingSpeed: 2000, // Default moving speed (faster than plotting)
         isPaused: false,
         commandsSent: 0,
         commandsCompleted: 0,
         queue: [],
-        startTime: null,
-        entities: []
+        startTime: null
     };
 
-    getState(): Readonly<PlotterState> {
+    getState(): Readonly<AxidrawState> {
         return { ...this.state, queue: [...this.state.queue] };
     }
 
@@ -105,15 +98,15 @@ export class PlotterModel {
         this.state.commandsCompleted = count;
     }
 
-    getQueue(): PlotCommand[] {
+    getQueue(): AxidrawCommand[] {
         return [...this.state.queue];
     }
 
-    enqueue(command: PlotCommand): void {
+    enqueue(command: AxidrawCommand): void {
         this.state.queue.push(command);
     }
 
-    dequeue(): PlotCommand | undefined {
+    dequeue(): AxidrawCommand | undefined {
         return this.state.queue.shift();
     }
 
@@ -144,33 +137,8 @@ export class PlotterModel {
             commandsSent: 0,
             commandsCompleted: 0,
             queue: [],
-            startTime: null,
-            entities: this.state.entities // Keep entities
+            startTime: null
         };
-    }
-
-    // Entity management
-    getEntities(): PlotEntity[] {
-        return [...this.state.entities];
-    }
-
-    addEntity(entity: PlotEntity): void {
-        this.state.entities.push(entity);
-    }
-
-    updateEntity(id: string, updates: Partial<PlotEntity>): void {
-        const idx = this.state.entities.findIndex(e => e.id === id);
-        if (idx !== -1) {
-            this.state.entities[idx] = { ...this.state.entities[idx], ...updates };
-        }
-    }
-
-    removeEntity(id: string): void {
-        this.state.entities = this.state.entities.filter(e => e.id !== id);
-    }
-
-    getEntity(id: string): PlotEntity | undefined {
-        return this.state.entities.find(e => e.id === id);
     }
 }
 

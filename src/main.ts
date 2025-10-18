@@ -3,19 +3,19 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { SerialModel } from './models/SerialModel';
 import { SerialController } from './controllers/SerialController';
-import { PlotterModel } from './models/PlotterModel';
-import { PlotterController } from './controllers/PlotterController';
+import { AxidrawModel } from './models/AxidrawModel';
+import { AxidrawController } from './controllers/AxidrawController';
 
 // Note: Hot reload is handled by nodemon in dev mode (see package.json)
 // No need for electron-reload here as it conflicts with nodemon
 
 let mainWindow: BrowserWindow | null;
 
-// Initialize serial and plotter controllers
+// Initialize serial and AxiDraw controllers
 const serialModel = new SerialModel();
 const serialController = new SerialController(serialModel);
-const plotterModel = new PlotterModel();
-const plotterController = new PlotterController(plotterModel, serialController);
+const axidrawModel = new AxidrawModel();
+const axidrawController = new AxidrawController(axidrawModel, serialController);
 
 interface PlotterSettings {
   penUpPosition: number;
@@ -38,9 +38,9 @@ function loadPlotterSettings(): PlotterSettings | null {
 
 function savePlotterSettings(): void {
   const settings: PlotterSettings = {
-    penUpPosition: plotterModel.getPenUpPosition(),
-    penDownPosition: plotterModel.getPenDownPosition(),
-    speed: plotterModel.getSpeed()
+    penUpPosition: axidrawModel.getPenUpPosition(),
+    penDownPosition: axidrawModel.getPenDownPosition(),
+    speed: axidrawModel.getSpeed()
   };
   fs.writeFileSync(getPlotterSettingsFile(), JSON.stringify(settings, null, 2));
 }
@@ -48,9 +48,9 @@ function savePlotterSettings(): void {
 // Load plotter settings on startup
 const savedSettings = loadPlotterSettings();
 if (savedSettings) {
-  plotterModel.setPenUpPosition(savedSettings.penUpPosition);
-  plotterModel.setPenDownPosition(savedSettings.penDownPosition);
-  plotterModel.setSpeed(savedSettings.speed);
+  axidrawModel.setPenUpPosition(savedSettings.penUpPosition);
+  axidrawModel.setPenDownPosition(savedSettings.penDownPosition);
+  axidrawModel.setSpeed(savedSettings.speed);
 }
 
 interface WindowState {
@@ -263,7 +263,8 @@ serialController.onData((data: string) => {
 // Plotter IPC handlers
 ipcMain.handle('plotter-pen-up', async () => {
   try {
-    await plotterController.penUp();
+    await axidrawController.penUp();
+    console.log('Pen up sent');
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Pen up failed';
@@ -273,7 +274,7 @@ ipcMain.handle('plotter-pen-up', async () => {
 
 ipcMain.handle('plotter-pen-down', async () => {
   try {
-    await plotterController.penDown();
+    await axidrawController.penDown();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Pen down failed';
@@ -283,7 +284,7 @@ ipcMain.handle('plotter-pen-down', async () => {
 
 ipcMain.handle('plotter-set-pen-up-value', async (_event, value: number) => {
   try {
-    await plotterController.setPenUpValue(value);
+    await axidrawController.setPenUpValue(value);
     savePlotterSettings();
     return { success: true };
   } catch (error) {
@@ -294,7 +295,7 @@ ipcMain.handle('plotter-set-pen-up-value', async (_event, value: number) => {
 
 ipcMain.handle('plotter-set-pen-down-value', async (_event, value: number) => {
   try {
-    await plotterController.setPenDownValue(value);
+    await axidrawController.setPenDownValue(value);
     savePlotterSettings();
     return { success: true };
   } catch (error) {
@@ -305,7 +306,7 @@ ipcMain.handle('plotter-set-pen-down-value', async (_event, value: number) => {
 
 ipcMain.handle('plotter-set-speed', async (_event, value: number) => {
   try {
-    plotterController.setSpeedValue(value);
+    axidrawController.setSpeedValue(value);
     savePlotterSettings();
     return { success: true };
   } catch (error) {
@@ -316,7 +317,7 @@ ipcMain.handle('plotter-set-speed', async (_event, value: number) => {
 
 ipcMain.handle('plotter-plot-path', async (_event, paths: [number, number][][], doLift: boolean = true) => {
   try {
-    plotterController.plotPath(paths, doLift);
+    axidrawController.plotPath(paths, doLift);
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Plot path failed';
@@ -326,7 +327,7 @@ ipcMain.handle('plotter-plot-path', async (_event, paths: [number, number][][], 
 
 ipcMain.handle('plotter-move-to', async (_event, position: [number, number]) => {
   try {
-    plotterController.moveTo(position);
+    axidrawController.moveTo(position);
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Move to failed';
@@ -336,7 +337,7 @@ ipcMain.handle('plotter-move-to', async (_event, position: [number, number]) => 
 
 ipcMain.handle('plotter-pause', async () => {
   try {
-    plotterController.pause();
+    axidrawController.pause();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Pause failed';
@@ -346,7 +347,7 @@ ipcMain.handle('plotter-pause', async () => {
 
 ipcMain.handle('plotter-resume', async () => {
   try {
-    plotterController.resume();
+    axidrawController.resume();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Resume failed';
@@ -356,7 +357,7 @@ ipcMain.handle('plotter-resume', async () => {
 
 ipcMain.handle('plotter-disengage', async () => {
   try {
-    await plotterController.disengage();
+    await axidrawController.disengage();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Disengage failed';
@@ -366,7 +367,7 @@ ipcMain.handle('plotter-disengage', async () => {
 
 ipcMain.handle('plotter-start-queue', async () => {
   try {
-    plotterController.startQueueConsumption();
+    axidrawController.startQueueConsumption();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Start queue failed';
@@ -376,7 +377,7 @@ ipcMain.handle('plotter-start-queue', async () => {
 
 ipcMain.handle('plotter-stop-queue', async () => {
   try {
-    plotterController.stopQueueConsumption();
+    axidrawController.stopQueueConsumption();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Stop queue failed';
@@ -385,12 +386,12 @@ ipcMain.handle('plotter-stop-queue', async () => {
 });
 
 ipcMain.handle('plotter-get-state', async () => {
-  return plotterModel.getState();
+  return axidrawModel.getState();
 });
 
 ipcMain.handle('plotter-get-position', async () => {
   try {
-    const position = await plotterController.getCurrentPosition();
+    const position = await axidrawController.getCurrentPosition();
     return { success: true, position };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Get position failed';
@@ -401,9 +402,9 @@ ipcMain.handle('plotter-get-position', async () => {
 ipcMain.handle('plotter-reset', async () => {
   try {
     // Send EBB reset command to hardware
-    await plotterController.reset();
+    await axidrawController.reset();
     // Reset the software model
-    plotterModel.reset();
+    axidrawModel.reset();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Reset failed';
@@ -413,7 +414,7 @@ ipcMain.handle('plotter-reset', async () => {
 
 ipcMain.handle('plotter-set-origin', async () => {
   try {
-    await plotterController.setPositionToOrigin();
+    await axidrawController.setPositionToOrigin();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Set origin failed';
@@ -423,7 +424,7 @@ ipcMain.handle('plotter-set-origin', async () => {
 
 ipcMain.handle('plotter-initialize', async () => {
   try {
-    await plotterController.initialize();
+    await axidrawController.initialize();
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Initialize failed';
@@ -431,46 +432,11 @@ ipcMain.handle('plotter-initialize', async () => {
   }
 });
 
-// Entity IPC handlers
-ipcMain.handle('plotter-get-entities', async () => {
-  return plotterModel.getEntities();
-});
-
-ipcMain.handle('plotter-add-entity', async (_event, entity: any) => {
+// Add IPC handler for moving speed
+ipcMain.handle('set-moving-speed', async (_event, value: number) => {
   try {
-    plotterModel.addEntity(entity);
-    return { success: true };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Add entity failed';
-    return { success: false, error: errorMsg };
-  }
-});
-
-ipcMain.handle('plotter-update-entity', async (_event, id: string, updates: any) => {
-  try {
-    plotterModel.updateEntity(id, updates);
-    return { success: true };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Update entity failed';
-    return { success: false, error: errorMsg };
-  }
-});
-
-ipcMain.handle('plotter-remove-entity', async (_event, id: string) => {
-  try {
-    plotterModel.removeEntity(id);
-    return { success: true };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Remove entity failed';
-    return { success: false, error: errorMsg };
-  }
-});
-
-// Add new IPC handler for moving speed
-ipcMain.handle('set-moving-speed', async (event, value: number) => {
-  try {
-    if (plotterController) {
-      plotterController.setMovingSpeedValue(value);
+    if (axidrawController) {
+      axidrawController.setMovingSpeedValue(value);
       return { success: true };
     }
     return { success: false, error: 'Plotter not connected' };
