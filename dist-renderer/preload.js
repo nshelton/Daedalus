@@ -34,5 +34,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     plotterGetPosition: () => ipcRenderer.invoke('plotter-get-position'),
     plotterReset: () => ipcRenderer.invoke('plotter-reset'),
     plotterSetOrigin: () => ipcRenderer.invoke('plotter-set-origin'),
-    setMovingSpeed: (value) => ipcRenderer.invoke('set-moving-speed', value)
+    setMovingSpeed: (value) => ipcRenderer.invoke('set-moving-speed', value),
+    getPlotterSettings: () => ipcRenderer.invoke('get-plotter-settings'),
 });

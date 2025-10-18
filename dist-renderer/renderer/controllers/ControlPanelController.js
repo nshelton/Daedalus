@@ -6,9 +6,6 @@ export class ControlPanelController {
         this.selectedPort = null;
         this.view = new ControlPanelView(this);
     }
-    setInitialFromHardware(penUp, penDown, speed) {
-        this.view.setInitialSettings(penUp, penDown, speed);
-    }
     async onPenUpClick() {
         try {
             console.log('Sending pen up');
@@ -93,7 +90,6 @@ export class ControlPanelController {
     async onSetMovingSpeed(value) {
         try {
             await window.electronAPI.setMovingSpeed(value);
-            console.log('Moving speed set to:', value);
         }
         catch (error) {
             console.error('Failed to set moving speed:', error);
@@ -157,8 +153,12 @@ export class ControlPanelController {
     }
     async initializePlotter() {
         try {
-            const state = await window.electronAPI.plotterGetState();
-            this.view.setInitialSettings(state.penUpPosition, state.penDownPosition, state.speed);
+            const plotterSettings = await window.electronAPI.getPlotterSettings();
+            if (!plotterSettings) {
+                console.error('Failed to get plotter settings');
+                return;
+            }
+            this.view.setInitialSettings(plotterSettings);
             const result = await window.electronAPI.plotterInitialize();
             if (result.success) {
                 await window.electronAPI.plotterSetOrigin();

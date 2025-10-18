@@ -1,4 +1,5 @@
 import { ControlPanelController } from "../controllers/ControlPanelController";
+import { PlotterSettings } from "../../preload";
 
 export class ControlPanelView {
     private statusIndicator: HTMLElement;
@@ -14,12 +15,12 @@ export class ControlPanelView {
     private penUpSlider: HTMLInputElement;
     private penDownSlider: HTMLInputElement;
     private speedSlider: HTMLInputElement;
-    private movingSpeedSlider?: HTMLInputElement;
+    private movingSpeedSlider: HTMLInputElement;
 
     private penUpValue: HTMLSpanElement;
     private penDownValue: HTMLSpanElement;
     private speedValue: HTMLSpanElement;
-    private movingSpeedValue?: HTMLSpanElement;
+    private movingSpeedValue: HTMLSpanElement;
 
     constructor(private controller: ControlPanelController) {
         this.controller = controller;
@@ -36,12 +37,12 @@ export class ControlPanelView {
         this.penUpSlider = document.getElementById('pen-up-slider') as HTMLInputElement;
         this.penDownSlider = document.getElementById('pen-down-slider') as HTMLInputElement;
         this.speedSlider = document.getElementById('speed-slider') as HTMLInputElement;
-        this.movingSpeedSlider = document.getElementById('moving-speed-slider') as HTMLInputElement | null || undefined;
+        this.movingSpeedSlider = document.getElementById('moving-speed-slider') as HTMLInputElement;
 
         this.penUpValue = document.getElementById('pen-up-value') as HTMLSpanElement;
         this.penDownValue = document.getElementById('pen-down-value') as HTMLSpanElement;
         this.speedValue = document.getElementById('speed-value') as HTMLSpanElement;
-        this.movingSpeedValue = document.getElementById('moving-speed-value') as HTMLSpanElement | null || undefined;
+        this.movingSpeedValue = document.getElementById('moving-speed-value') as HTMLSpanElement;
 
         this.wireEvents();
     }
@@ -68,12 +69,10 @@ export class ControlPanelView {
             const value = (e.target as HTMLInputElement).value;
             this.speedValue.textContent = value;
         });
-        if (this.movingSpeedSlider) {
-            this.movingSpeedSlider.addEventListener('input', (e) => {
-                const value = (e.target as HTMLInputElement).value;
-                if (this.movingSpeedValue) this.movingSpeedValue.textContent = value;
-            });
-        }
+        this.movingSpeedSlider.addEventListener('input', (e) => {
+            const value = (e.target as HTMLInputElement).value;
+            if (this.movingSpeedValue) this.movingSpeedValue.textContent = value;
+        });
 
         // Sliders commit
         this.penUpSlider.addEventListener('change', (e) => {
@@ -84,20 +83,14 @@ export class ControlPanelView {
             const value = parseInt((e.target as HTMLInputElement).value);
             this.controller.onSetPenDown(value);
         });
-
         this.speedSlider.addEventListener('change', (e) => {
             const value = parseInt((e.target as HTMLInputElement).value);
             this.controller.onSetSpeed(value);
         });
-
-        if (this.movingSpeedSlider && this.controller.onSetMovingSpeed) {
-            this.movingSpeedSlider.addEventListener('change', (e) => {
-                const value = parseInt((e.target as HTMLInputElement).value);
-                if (this.controller.onSetMovingSpeed) {
-                    this.controller.onSetMovingSpeed(value);
-                }
-            });
-        }
+        this.movingSpeedSlider.addEventListener('change', (e) => {
+            const value = parseInt((e.target as HTMLInputElement).value);
+            this.controller.onSetMovingSpeed(value);
+        });
     }
 
     // Public API
@@ -115,12 +108,14 @@ export class ControlPanelView {
         }
     }
 
-    setInitialSettings(penUp: number, penDown: number, speed: number): void {
-        this.penUpSlider.value = String(penUp);
-        this.penUpValue.textContent = String(penUp);
-        this.penDownSlider.value = String(penDown);
-        this.penDownValue.textContent = String(penDown);
-        this.speedSlider.value = String(speed);
-        this.speedValue.textContent = String(speed);
+    setInitialSettings(plotterSettings: PlotterSettings): void {
+        this.penUpSlider.value = String(plotterSettings.penUpPosition);
+        this.penUpValue.textContent = String(plotterSettings.penUpPosition);
+        this.penDownSlider.value = String(plotterSettings.penDownPosition);
+        this.penDownValue.textContent = String(plotterSettings.penDownPosition);
+        this.speedSlider.value = String(plotterSettings.speed);
+        this.speedValue.textContent = String(plotterSettings.speed);
+        this.movingSpeedSlider.value = String(plotterSettings.movingSpeed);
+        this.movingSpeedValue.textContent = String(plotterSettings.movingSpeed);
     }
 }

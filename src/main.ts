@@ -5,6 +5,7 @@ import { SerialModel } from './models/SerialModel';
 import { SerialController } from './controllers/SerialController';
 import { AxidrawModel } from './models/AxidrawModel';
 import { AxidrawController } from './controllers/AxidrawController';
+import { PlotterSettings } from './preload';
 
 // Note: Hot reload is handled by nodemon in dev mode (see package.json)
 // No need for electron-reload here as it conflicts with nodemon
@@ -16,12 +17,6 @@ const serialModel = new SerialModel();
 const serialController = new SerialController(serialModel);
 const axidrawModel = new AxidrawModel();
 const axidrawController = new AxidrawController(axidrawModel, serialController);
-
-interface PlotterSettings {
-  penUpPosition: number;
-  penDownPosition: number;
-  speed: number;
-}
 
 function getPlotterSettingsFile(): string {
   return path.join(app.getPath('userData'), 'plotter-settings.json');
@@ -40,8 +35,9 @@ function savePlotterSettings(): void {
   const settings: PlotterSettings = {
     penUpPosition: axidrawModel.getPenUpPosition(),
     penDownPosition: axidrawModel.getPenDownPosition(),
-    speed: axidrawModel.getSpeed()
-  };
+    speed: axidrawModel.getSpeed(),
+    movingSpeed: axidrawModel.getMovingSpeed(),
+  } as PlotterSettings;
   fs.writeFileSync(getPlotterSettingsFile(), JSON.stringify(settings, null, 2));
 }
 
@@ -51,6 +47,7 @@ if (savedSettings) {
   axidrawModel.setPenUpPosition(savedSettings.penUpPosition);
   axidrawModel.setPenDownPosition(savedSettings.penDownPosition);
   axidrawModel.setSpeed(savedSettings.speed);
+  axidrawModel.setMovingSpeed(savedSettings.movingSpeed);
 }
 
 interface WindowState {
@@ -214,6 +211,15 @@ ipcMain.handle('get-serial-ports', async () => {
   }
 });
 
+ipcMain.handle('get-plotter-settings', async () => {
+  try {
+    return loadPlotterSettings();
+  } catch (error) {
+    console.error('Error getting plotter settings:', error);
+    return null;
+  }
+});
+
 ipcMain.handle('find-plotter-port', async () => {
   try {
     const port = await serialController.findPlotterPort();
@@ -311,6 +317,17 @@ ipcMain.handle('plotter-set-speed', async (_event, value: number) => {
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Set speed failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('set-moving-speed', async (_event, value: number) => {
+  try {
+    await axidrawController.setMovingSpeedValue(value);
+    savePlotterSettings();
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Set moving speed failed';
     return { success: false, error: errorMsg };
   }
 });
@@ -431,18 +448,3 @@ ipcMain.handle('plotter-initialize', async () => {
     return { success: false, error: errorMsg };
   }
 });
-
-// Add IPC handler for moving speed
-ipcMain.handle('set-moving-speed', async (_event, value: number) => {
-  try {
-    if (axidrawController) {
-      axidrawController.setMovingSpeedValue(value);
-      return { success: true };
-    }
-    return { success: false, error: 'Plotter not connected' };
-  } catch (error) {
-    console.error('Error setting moving speed:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-});
-

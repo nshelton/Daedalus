@@ -13,11 +13,11 @@ export class ControlPanelView {
         this.penUpSlider = document.getElementById('pen-up-slider');
         this.penDownSlider = document.getElementById('pen-down-slider');
         this.speedSlider = document.getElementById('speed-slider');
-        this.movingSpeedSlider = document.getElementById('moving-speed-slider') || undefined;
+        this.movingSpeedSlider = document.getElementById('moving-speed-slider');
         this.penUpValue = document.getElementById('pen-up-value');
         this.penDownValue = document.getElementById('pen-down-value');
         this.speedValue = document.getElementById('speed-value');
-        this.movingSpeedValue = document.getElementById('moving-speed-value') || undefined;
+        this.movingSpeedValue = document.getElementById('moving-speed-value');
         this.wireEvents();
     }
     wireEvents() {
@@ -41,13 +41,11 @@ export class ControlPanelView {
             const value = e.target.value;
             this.speedValue.textContent = value;
         });
-        if (this.movingSpeedSlider) {
-            this.movingSpeedSlider.addEventListener('input', (e) => {
-                const value = e.target.value;
-                if (this.movingSpeedValue)
-                    this.movingSpeedValue.textContent = value;
-            });
-        }
+        this.movingSpeedSlider.addEventListener('input', (e) => {
+            const value = e.target.value;
+            if (this.movingSpeedValue)
+                this.movingSpeedValue.textContent = value;
+        });
         // Sliders commit
         this.penUpSlider.addEventListener('change', (e) => {
             const value = parseInt(e.target.value);
@@ -61,14 +59,10 @@ export class ControlPanelView {
             const value = parseInt(e.target.value);
             this.controller.onSetSpeed(value);
         });
-        if (this.movingSpeedSlider && this.controller.onSetMovingSpeed) {
-            this.movingSpeedSlider.addEventListener('change', (e) => {
-                const value = parseInt(e.target.value);
-                if (this.controller.onSetMovingSpeed) {
-                    this.controller.onSetMovingSpeed(value);
-                }
-            });
-        }
+        this.movingSpeedSlider.addEventListener('change', (e) => {
+            const value = parseInt(e.target.value);
+            this.controller.onSetMovingSpeed(value);
+        });
     }
     // Public API
     setConnected(connected, text) {
@@ -85,12 +79,14 @@ export class ControlPanelView {
             this.plotterControls.style.display = 'none';
         }
     }
-    setInitialSettings(penUp, penDown, speed) {
-        this.penUpSlider.value = String(penUp);
-        this.penUpValue.textContent = String(penUp);
-        this.penDownSlider.value = String(penDown);
-        this.penDownValue.textContent = String(penDown);
-        this.speedSlider.value = String(speed);
-        this.speedValue.textContent = String(speed);
+    setInitialSettings(plotterSettings) {
+        this.penUpSlider.value = String(plotterSettings.penUpPosition);
+        this.penUpValue.textContent = String(plotterSettings.penUpPosition);
+        this.penDownSlider.value = String(plotterSettings.penDownPosition);
+        this.penDownValue.textContent = String(plotterSettings.penDownPosition);
+        this.speedSlider.value = String(plotterSettings.speed);
+        this.speedValue.textContent = String(plotterSettings.speed);
+        this.movingSpeedSlider.value = String(plotterSettings.movingSpeed);
+        this.movingSpeedValue.textContent = String(plotterSettings.movingSpeed);
     }
 }

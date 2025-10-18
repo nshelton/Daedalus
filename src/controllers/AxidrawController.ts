@@ -15,6 +15,12 @@ export class AxidrawController {
     private readonly SP_PEN_UP_STATE = 1;
     private readonly SP_PEN_DOWN_STATE = 0;
 
+
+    // At 100% speed, aim for ~25000 steps/second (AxiDraw max)
+    // This is much faster and more practical
+    private readonly MAX_STEPS_PER_SECOND = 5000;
+
+
     // EiBotBoard/AxiDraw has 2032 steps per inch = 80 steps per mm
     private readonly STEPS_PER_MM = 80;
 
@@ -60,68 +66,19 @@ export class AxidrawController {
             }
         } else if (response.startsWith('QG,')) {
             // Parse QG (Query General) response
-            this.parseQGResponse(response);
+            console.log('QG Response:', response);
             // Count query responses as completed to keep pending in sync
             const completed = this.model.getCommandsCompleted() + 1;
             this.model.setCommandsCompleted(completed);
         } else if (response.startsWith('QM,')) {
             // Parse QM (Query Motors) response - legacy but still supported
-            this.parseQMResponse(response);
+            console.log('QM Response:', response);
             // Count query responses as completed to keep pending in sync
             const completed = this.model.getCommandsCompleted() + 1;
             this.model.setCommandsCompleted(completed);
         } else if (response.trim().length > 0) {
             // Handle other responses
             console.log('EBB Response:', response);
-        }
-    }
-
-    private parseQGResponse(response: string): void {
-        // QG response format: QG,<status_bits>,<motor1_position>,<motor2_position>
-        const parts = response.split(',');
-        if (parts.length >= 4) {
-            const statusBits = parseInt(parts[1], 10);
-            const motor1Pos = parseInt(parts[2], 10);
-            const motor2Pos = parseInt(parts[3], 10);
-
-            // CoreXY inverse kinematics: from motor steps (A,B) to XY steps
-            const aSteps = motor1Pos;
-            const bSteps = motor2Pos;
-            const xSteps = Math.round((aSteps + bSteps) / 2);
-            const ySteps = Math.round((aSteps - bSteps) / 2);
-
-            // Convert step positions to mm coordinates
-            const xMm = xSteps / this.STEPS_PER_MM;
-            const yMm = ySteps / this.STEPS_PER_MM;
-
-            // Update model with current position
-            this.model.setPosition([xMm, yMm]);
-
-            console.log(`Position: X=${xMm.toFixed(2)}mm, Y=${yMm.toFixed(2)}mm (steps: ${motor1Pos}, ${motor2Pos}, status: 0x${statusBits.toString(16)})`);
-        }
-    }
-
-    private parseQMResponse(response: string): void {
-        // QM response format: QM,<motor1_position>,<motor2_position>
-        const parts = response.split(',');
-        if (parts.length >= 3) {
-            const motor1Pos = parseInt(parts[1], 10);
-            const motor2Pos = parseInt(parts[2], 10);
-
-            // CoreXY inverse kinematics: from motor steps (A,B) to XY steps
-            const aSteps = motor1Pos;
-            const bSteps = motor2Pos;
-            const xSteps = Math.round((aSteps + bSteps) / 2);
-            const ySteps = Math.round((aSteps - bSteps) / 2);
-
-            // Convert step positions to mm coordinates
-            const xMm = xSteps / this.STEPS_PER_MM;
-            const yMm = ySteps / this.STEPS_PER_MM;
-
-            // Update model with current position
-            this.model.setPosition([xMm, yMm]);
-
-            console.log(`Position: X=${xMm.toFixed(2)}mm, Y=${yMm.toFixed(2)}mm (steps: ${motor1Pos}, ${motor2Pos})`);
         }
     }
 
@@ -146,11 +103,11 @@ export class AxidrawController {
         // SP,<state>,<duration>
         // state: 0 = down (servo_min), 1 = up (servo_max)
         const dur = duration !== undefined ? duration : this.upDownDurationMs;
-        await this.sendCommand(`SP,${state},${dur}`);
+        const int_dur = Math.round(dur);
+        await this.sendCommand(`SP,${state},${int_dur}`);
     }
 
     async penUp(duration?: number): Promise<void> {
-        console.log('Pen up command sent');
         await this.setPenState(this.SP_PEN_UP_STATE, duration);
     }
 
@@ -162,7 +119,9 @@ export class AxidrawController {
     async stepperMove(duration: number, axis1Steps: number, axis2Steps: number): Promise<void> {
         // SM,<duration>,<axis1>,<axis2>
         // duration in milliseconds
-        await this.sendCommand(`SM,${duration},${axis1Steps},${axis2Steps}`);
+        const axis1Steps_int = Math.round(axis1Steps);
+        const axis2Steps_int = Math.round(axis2Steps);
+        await this.sendCommand(`SM,${duration},${axis1Steps_int},${axis2Steps_int}`);
     }
 
     // EBB Command: Low-level move (rate-based)
@@ -243,7 +202,7 @@ export class AxidrawController {
 
     // Update executeMove to use different speeds based on pen state
     async executeMove(dxSteps: number, dySteps: number, isPlotting: boolean = false): Promise<void> {
-        // dxSteps and dySteps are already in motor steps
+        // dxSteps and dySteps are world XY steps
 
         // Skip zero-length moves
         if (dxSteps === 0 && dySteps === 0) {
@@ -253,20 +212,16 @@ export class AxidrawController {
         // Use different speeds based on whether we're plotting or just moving
         const speed = isPlotting ? this.model.getSpeed() : this.model.getMovingSpeed();
 
-        // CoreXY forward kinematics: from XY steps to motor steps (A,B)
-        const bSteps = dxSteps + dySteps;
-        const aSteps = dxSteps - dySteps;
+        // CoreXY forward kinematics: from machine XY steps to motor steps (A,B)
+        const aSteps = dxSteps + dySteps;
+        const bSteps = -dxSteps + dySteps;
 
         // Calculate duration based on the limiting motor distance to maintain feed rate
         const distance = Math.max(Math.abs(aSteps), Math.abs(bSteps));
 
         // Calculate duration based on speed
-        // At 100% speed, aim for ~25000 steps/second (AxiDraw max)
-        // This is much faster and more practical
-        const maxStepsPerSecond = 25000;
-        const stepsPerSecond = (speed / 100) * maxStepsPerSecond;
+        const stepsPerSecond = (speed / 100) * this.MAX_STEPS_PER_SECOND;
         const duration = Math.max(1, Math.round((distance / stepsPerSecond) * 1000));
-
         await this.stepperMove(duration, aSteps, bSteps);
     }
 
@@ -274,7 +229,7 @@ export class AxidrawController {
     moveTo(p: [number, number], isPlotting: boolean = false): void {
         const currentPos = this.model.getPosition();
 
-        // Convert from mm to motor steps
+        // Convert from mm to step deltas
         const dxMm = p[0] - currentPos[0];
         const dyMm = p[1] - currentPos[1];
         const dxSteps = Math.round(dxMm * this.STEPS_PER_MM);
@@ -283,6 +238,7 @@ export class AxidrawController {
         this.model.enqueue({ type: 'move', params: [dxSteps, dySteps, isPlotting] });
         this.model.setPosition(p);
     }
+
 
     // Update plotPath to use plotting speed for drawing moves
     plotPath(paths: [number, number][][], doLift: boolean = true): void {
@@ -406,7 +362,7 @@ export class AxidrawController {
             // Increased from 10ms to 50ms for better flow control
             this.consumeQueueInterval = setInterval(() => {
                 this.consumeQueue().catch(err => console.error('Queue consumption error:', err));
-            }, 50);
+            }, 20);
         }
     }
 

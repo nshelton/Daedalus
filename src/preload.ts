@@ -47,6 +47,13 @@ export interface PositionResult {
   error?: string;
 }
 
+export interface PlotterSettings {
+  penUpPosition: number;
+  penDownPosition: number;
+  speed: number;
+  movingSpeed: number;
+}
+
 // Define the API interface
 export interface ElectronAPI {
   // Serial operations
@@ -77,6 +84,7 @@ export interface ElectronAPI {
   plotterReset: () => Promise<OperationResult>;
   plotterSetOrigin: () => Promise<OperationResult>;
   setMovingSpeed: (value: number) => Promise<OperationResult>;
+  getPlotterSettings: () => Promise<PlotterSettings>;
 }
 
 // Expose protected methods that allow the renderer process to use
@@ -117,6 +125,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   plotterGetPosition: () => ipcRenderer.invoke('plotter-get-position'),
   plotterReset: () => ipcRenderer.invoke('plotter-reset'),
   plotterSetOrigin: () => ipcRenderer.invoke('plotter-set-origin'),
-  setMovingSpeed: (value: number) => ipcRenderer.invoke('set-moving-speed', value)
+  setMovingSpeed: (value: number) => ipcRenderer.invoke('set-moving-speed', value),
+  getPlotterSettings: () => ipcRenderer.invoke('get-plotter-settings'),
 } as ElectronAPI);
 
