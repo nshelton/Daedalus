@@ -1,22 +1,7 @@
 import { PathTools } from "./renderer/PathTools";
-// DOM Elements
-const penUpBtn = document.getElementById('pen-up-btn');
-const penDownBtn = document.getElementById('pen-down-btn');
-const plotBtn = document.getElementById('plot-btn');
-const stopBtn = document.getElementById('stop-btn');
-const disengageBtn = document.getElementById('disengage-btn');
-const statusBtn = document.getElementById('status-btn');
-const debugAxesCheckbox = document.getElementById('debug-axes-checkbox');
-const penUpSlider = document.getElementById('pen-up-slider');
-const penDownSlider = document.getElementById('pen-down-slider');
-const speedSlider = document.getElementById('speed-slider');
-const penUpValue = document.getElementById('pen-up-value');
-const penDownValue = document.getElementById('pen-down-value');
-const speedValue = document.getElementById('speed-value');
 const statusIndicator = document.querySelector('.status-indicator');
 const plotterControls = document.getElementById('plotter-controls');
 const plotCanvas = document.getElementById('plot-canvas');
-const plotPlaceholder = document.querySelector('.plot-placeholder');
 const dataReceivedSpan = document.getElementById('data-received');
 const sampleRateSpan = document.getElementById('sample-rate');
 const lastValueSpan = document.getElementById('last-value');
@@ -66,59 +51,7 @@ window.addEventListener('beforeunload', async () => {
 });
 // Setup event listeners
 function setupEventListeners() {
-    // Status button (acts as connect/disconnect)
-    statusBtn.addEventListener('click', handleConnect);
-    // Plotter control buttons
-    penUpBtn.addEventListener('click', handlePenUp);
-    penDownBtn.addEventListener('click', handlePenDown);
-    plotBtn.addEventListener('click', handlePlot);
-    stopBtn.addEventListener('click', handleStop);
-    disengageBtn.addEventListener('click', handleDisengage);
-    // Slider listeners
-    penUpSlider.addEventListener('input', (e) => {
-        const value = e.target.value;
-        penUpValue.textContent = value;
-    });
-    penUpSlider.addEventListener('change', async (e) => {
-        const value = parseInt(e.target.value);
-        await handleSetPenUpPosition(value);
-    });
-    penDownSlider.addEventListener('input', (e) => {
-        const value = e.target.value;
-        penDownValue.textContent = value;
-    });
-    penDownSlider.addEventListener('change', async (e) => {
-        const value = parseInt(e.target.value);
-        await handleSetPenDownPosition(value);
-    });
-    speedSlider.addEventListener('input', (e) => {
-        const value = e.target.value;
-        speedValue.textContent = value;
-    });
-    speedSlider.addEventListener('change', async (e) => {
-        const value = parseInt(e.target.value);
-        await handleSetSpeed(value);
-    });
-    // Add event listener for moving speed slider
-    movingSpeedSlider.addEventListener('input', (e) => {
-        const value = e.target.value;
-        movingSpeedValue.textContent = value;
-    });
     // Add handler for setting moving speed
-    async function handleSetMovingSpeed(value) {
-        try {
-            await window.electronAPI.setMovingSpeed(value);
-            console.log('Moving speed set to:', value);
-        }
-        catch (error) {
-            console.error('Failed to set moving speed:', error);
-        }
-    }
-    // Add event listener for moving speed slider change
-    movingSpeedSlider.addEventListener('change', async (e) => {
-        const value = parseInt(e.target.value);
-        await handleSetMovingSpeed(value);
-    });
     // Canvas interactions
     plotCanvas.addEventListener('wheel', handleWheel, { passive: false });
     plotCanvas.addEventListener('mousedown', handleMouseDown);
@@ -126,42 +59,8 @@ function setupEventListeners() {
     plotCanvas.addEventListener('mouseup', handleMouseUp);
     plotCanvas.addEventListener('mouseleave', handleMouseUp);
     plotCanvas.addEventListener('contextmenu', (e) => PathTools.showContextMenu(e.clientX, e.clientY, e.offsetX, e.offsetY, (entity) => entities.push(entity)));
-    // Hide context menu on any left-click or scroll elsewhere
-    document.addEventListener('click', () => PathTools.hideContextMenu());
-    plotCanvas.addEventListener('wheel', () => PathTools.hideContextMenu());
     // Listen for serial data
     window.electronAPI.onSerialData(handleSerialData);
-}
-// Plotter Control Functions
-async function handlePenUp() {
-    try {
-        penUpBtn.disabled = true;
-        const result = await window.electronAPI.plotterPenUp();
-        if (!result.success) {
-            console.error('Pen up failed:', result.error);
-        }
-    }
-    catch (error) {
-        console.error('Error sending pen up:', error);
-    }
-    finally {
-        penUpBtn.disabled = false;
-    }
-}
-async function handlePenDown() {
-    try {
-        penDownBtn.disabled = true;
-        const result = await window.electronAPI.plotterPenDown();
-        if (!result.success) {
-            console.error('Pen down failed:', result.error);
-        }
-    }
-    catch (error) {
-        console.error('Error sending pen down:', error);
-    }
-    finally {
-        penDownBtn.disabled = false;
-    }
 }
 async function handlePlot() {
     try {
@@ -205,222 +104,6 @@ async function handlePlot() {
         plotBtn.textContent = 'PLOT';
     }
 }
-async function handleStop() {
-    try {
-        stopBtn.disabled = true;
-        stopBtn.textContent = 'Stopping...';
-        console.log('Stopping plot...');
-        // Stop queue consumption
-        await window.electronAPI.plotterStopQueue();
-        // Reset the plotter state
-        await window.electronAPI.plotterReset();
-        // Pen up
-        await window.electronAPI.plotterPenUp();
-        console.log('Plot stopped and reset');
-    }
-    catch (error) {
-        console.error('Error stopping plot:', error);
-        alert('Error stopping: ' + error);
-    }
-    finally {
-        stopBtn.disabled = false;
-        stopBtn.textContent = 'STOP';
-    }
-}
-async function handleDisengage() {
-    try {
-        disengageBtn.disabled = true;
-        const result = await window.electronAPI.plotterDisengage();
-        if (!result.success) {
-            console.error('Disengage failed:', result.error);
-        }
-    }
-    catch (error) {
-        console.error('Error disengaging motors:', error);
-    }
-    finally {
-        disengageBtn.disabled = false;
-    }
-}
-async function handleSetPenUpPosition(value) {
-    try {
-        const result = await window.electronAPI.plotterSetPenUpValue(value);
-        if (!result.success) {
-            console.error('Set pen up position failed:', result.error);
-        }
-    }
-    catch (error) {
-        console.error('Error setting pen up position:', error);
-    }
-}
-async function handleSetPenDownPosition(value) {
-    try {
-        const result = await window.electronAPI.plotterSetPenDownValue(value);
-        if (!result.success) {
-            console.error('Set pen down position failed:', result.error);
-        }
-    }
-    catch (error) {
-        console.error('Error setting pen down position:', error);
-    }
-}
-async function handleSetSpeed(value) {
-    try {
-        const result = await window.electronAPI.plotterSetSpeed(value);
-        if (!result.success) {
-            console.error('Set speed failed:', result.error);
-        }
-    }
-    catch (error) {
-        console.error('Error setting speed:', error);
-    }
-}
-// Manual connect/disconnect handler
-async function handleConnect() {
-    if (isConnected) {
-        // Disconnect
-        try {
-            statusBtn.disabled = true;
-            updateConnectionStatus(false, 'Disconnecting...');
-            const result = await window.electronAPI.disconnectSerial();
-            if (result.success) {
-                isConnected = false;
-                selectedPort = null;
-                updateConnectionStatus(false, 'Disconnected');
-                console.log('Disconnected from plotter');
-            }
-            else {
-                console.error('Disconnect failed:', result.error);
-                updateConnectionStatus(isConnected, selectedPort || 'Error');
-            }
-        }
-        catch (error) {
-            console.error('Disconnect error:', error);
-            updateConnectionStatus(isConnected, selectedPort || 'Error');
-        }
-        finally {
-            statusBtn.disabled = false;
-        }
-    }
-    else {
-        // Connect
-        try {
-            statusBtn.disabled = true;
-            updateConnectionStatus(false, 'Searching...');
-            const plotterPort = await window.electronAPI.findPlotterPort();
-            if (plotterPort) {
-                console.log('Found plotter port:', plotterPort.path);
-                updateConnectionStatus(false, 'Connecting...');
-                const result = await window.electronAPI.connectSerial(plotterPort.path, 115200);
-                if (result.success) {
-                    isConnected = true;
-                    selectedPort = plotterPort.path;
-                    updateConnectionStatus(true, plotterPort.path);
-                    console.log('Connected to plotter:', plotterPort.path);
-                    // Initialize plotter with servo settings
-                    await initializePlotter();
-                }
-                else {
-                    console.error('Connection failed:', result.error);
-                    updateConnectionStatus(false, 'Failed');
-                }
-            }
-            else {
-                console.log('No plotter port found');
-                updateConnectionStatus(false, 'Not Found');
-            }
-        }
-        catch (error) {
-            console.error('Connect failed:', error);
-            updateConnectionStatus(false, 'Error');
-        }
-        finally {
-            statusBtn.disabled = false;
-        }
-    }
-}
-// Initialize plotter with current slider values
-async function initializePlotter() {
-    try {
-        // Get current plotter state
-        const state = await window.electronAPI.plotterGetState();
-        // Update sliders to match plotter state
-        penUpSlider.value = state.penUpPosition.toString();
-        penUpValue.textContent = state.penUpPosition.toString();
-        penDownSlider.value = state.penDownPosition.toString();
-        penDownValue.textContent = state.penDownPosition.toString();
-        speedSlider.value = state.speed.toString();
-        speedValue.textContent = state.speed.toString();
-        // Send initialization commands to plotter
-        const result = await window.electronAPI.plotterInitialize();
-        if (result.success) {
-            console.log('Plotter initialized successfully');
-            // Reset position to (0,0) on connection
-            console.log('Setting plotter position to origin (0,0)...');
-            await window.electronAPI.plotterSetOrigin();
-            // Query actual position from EBB to sync with hardware
-            const positionResult = await window.electronAPI.plotterGetPosition();
-            if (positionResult.success && positionResult.position) {
-                console.log(`Plotter actual position: [${positionResult.position[0].toFixed(2)}, ${positionResult.position[1].toFixed(2)}]mm`);
-            }
-            else {
-                console.log('Could not query plotter position, assuming (0,0)');
-            }
-        }
-        else {
-            console.error('Plotter initialization failed:', result.error);
-        }
-    }
-    catch (error) {
-        console.error('Error initializing plotter:', error);
-    }
-}
-// Update connection status display
-function updateConnectionStatus(connected, text) {
-    if (connected) {
-        statusIndicator.classList.remove('disconnected');
-        statusIndicator.classList.add('connected');
-        statusBtn.textContent = text || 'Connected';
-        plotterControls.style.display = 'block';
-    }
-    else {
-        statusIndicator.classList.remove('connected');
-        statusIndicator.classList.add('disconnected');
-        statusBtn.textContent = text || 'Disconnected';
-        plotterControls.style.display = 'none';
-    }
-}
-// Handle incoming serial data
-function handleSerialData(data) {
-    totalBytesReceived += data.length;
-    dataReceivedSpan.textContent = `${totalBytesReceived} bytes`;
-    // Update sample rate
-    sampleCount++;
-    const now = Date.now();
-    const elapsed = (now - lastSampleTime) / 1000;
-    if (elapsed >= 1.0) {
-        const rate = sampleCount / elapsed;
-        sampleRateSpan.textContent = `${rate.toFixed(1)} Hz`;
-        sampleCount = 0;
-        lastSampleTime = now;
-    }
-    // Parse and store data (placeholder for actual plotting logic)
-    try {
-        const value = parseFloat(data.toString().trim());
-        if (!isNaN(value)) {
-            lastValueSpan.textContent = value.toFixed(2);
-            dataBuffer.push(value);
-            // Limit buffer size
-            const maxPoints = 1000;
-            if (dataBuffer.length > maxPoints) {
-                dataBuffer.shift();
-            }
-        }
-    }
-    catch (error) {
-        console.error('Error parsing data:', error);
-    }
-}
 // Clear data buffers
 // function clearData(): void {
 //     dataBuffer = [];
@@ -437,8 +120,6 @@ function setupCanvas() {
     const container = plotCanvas.parentElement;
     plotCanvas.width = container.clientWidth;
     plotCanvas.height = container.clientHeight;
-    // Hide placeholder, show canvas
-    plotPlaceholder.style.display = 'none';
     plotCanvas.style.display = 'block';
     // Position viewport so (0,0) is bottom-left of A3 paper
     // Center the paper on screen with some padding

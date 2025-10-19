@@ -1,14 +1,11 @@
 import { ControlPanelController } from "./ControlPanelController.js";
+import { PlotterGUIView } from "../views/PlotterGUIView.js";
 export class PlotterGUIController {
     constructor(model) {
-        this.panels = new Map();
         this.plotModel = model;
-        const root = document.getElementById('gui-root');
-        if (!root)
-            throw new Error('gui-root not found');
-        this.guiRoot = root;
-        // Create Plotter Controls panel
-        const content = this.addPanel('Plotter Controls');
+        this.view = new PlotterGUIView('gui-root');
+        // Create Plotter Controls panel via view
+        const content = this.view.addPanel('Plotter');
         // Provide a mount point for the existing ControlPanelView
         const controlPanelRoot = document.createElement('div');
         controlPanelRoot.id = 'control-panel-root';
@@ -16,30 +13,6 @@ export class PlotterGUIController {
         // Instantiate the existing ControlPanelController which will populate its UI
         this.controlPanelController = new ControlPanelController(this.plotModel);
         this.controlPanelView = this.controlPanelController["view"];
-    }
-    addPanel(title) {
-        const section = document.createElement('section');
-        section.className = 'gui-section';
-        const header = document.createElement('div');
-        header.className = 'gui-section-header';
-        header.textContent = title;
-        const toggleIcon = document.createElement('span');
-        toggleIcon.textContent = '▾';
-        toggleIcon.style.marginLeft = '8px';
-        header.appendChild(toggleIcon);
-        const content = document.createElement('div');
-        content.className = 'gui-section-content';
-        content.style.display = 'block';
-        header.onclick = () => {
-            const isOpen = content.style.display !== 'none';
-            content.style.display = isOpen ? 'none' : 'block';
-            toggleIcon.textContent = isOpen ? '▸' : '▾';
-        };
-        section.appendChild(header);
-        section.appendChild(content);
-        this.guiRoot.appendChild(section);
-        this.panels.set(title, content);
-        return content;
     }
     // Surface subset of control-panel view API for renderer usage
     setConnected(connected, text) {
