@@ -468,18 +468,18 @@ function handleSerialData(data: any): void {
 }
 
 // Clear data buffers
-function clearData(): void {
-    dataBuffer = [];
-    totalBytesReceived = 0;
-    sampleCount = 0;
-    lastSampleTime = Date.now();
+// function clearData(): void {
+//     dataBuffer = [];
+//     totalBytesReceived = 0;
+//     sampleCount = 0;
+//     lastSampleTime = Date.now();
 
-    dataReceivedSpan.textContent = '0 bytes';
-    sampleRateSpan.textContent = '0 Hz';
-    lastValueSpan.textContent = '—';
+//     dataReceivedSpan.textContent = '0 bytes';
+//     sampleRateSpan.textContent = '0 Hz';
+//     lastValueSpan.textContent = '—';
 
-    console.log('Data cleared');
-}
+//     console.log('Data cleared');
+// }
 
 // Canvas setup and rendering
 function setupCanvas(): void {

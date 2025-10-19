@@ -32,73 +32,7 @@
         <main class="main-content">
             <!-- Sidebar -->
             <aside class="sidebar">
-                <div class="control-panel">
-                    <h2 class="panel-title">Plotter Controls</h2>
-
-                    <!-- Connection Status -->
-                    <div class="control-group">
-                        <div class="connection-status">
-                            <span class="status-indicator disconnected"></span>
-                            <button id="status-btn" class="status-btn">Disconnected</button>
-                        </div>
-                    </div>
-
-                    <!-- Plotter Controls (hidden when disconnected) -->
-                    <div id="plotter-controls" style="display: none;">
-
-
-                        <div class="control-group">
-                            <div class="button-group">
-                                <button id="disengage-btn" class="btn btn-secondary">Disengage Motors</button>
-                            </div>
-                        </div>
-
-                        <div class="control-group">
-                            <div class="button-group">
-                                <button id="pen-up-btn" class="btn btn-primary">Pen Up</button>
-                                <button id="pen-down-btn" class="btn btn-primary">Pen Down</button>
-                            </div>
-                        </div>
-
-                        <div class="control-group">
-                            <label for="pen-up-slider">
-                                Pen Up Position: <span id="pen-up-value">20000</span>
-                            </label>
-                            <input type="range" id="pen-up-slider" class="slider" min="10000" max="30000" value="20000">
-                        </div>
-
-                        <div class="control-group">
-                            <label for="pen-down-slider">
-                                Pen Down Position: <span id="pen-down-value">15000</span>
-                            </label>
-                            <input type="range" id="pen-down-slider" class="slider" min="10000" max="30000"
-                                value="15000">
-                        </div>
-
-
-                        <div class="control-group">
-                            <label for="speed-slider">
-                                Plotting Speed: <span id="speed-value">50</span>%
-                            </label>
-                            <input type="range" id="speed-slider" class="slider" min="1" max="100" value="50">
-                        </div>
-
-                        <div class="control-group">
-                            <label for="moving-speed-slider">
-                                Moving Speed: <span id="moving-speed-value">75</span>%
-                            </label>
-                            <input type="range" id="moving-speed-slider" class="slider" min="1" max="100" value="75">
-                        </div>
-
-                        <div class="control-group">
-                            <div class="button-group">
-                                <button id="plot-btn" class="btn btn-primary">PLOT</button>
-                                <button id="stop-btn" class="btn btn-primary">STOP</button>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
+                <div id="gui-root"></div>
             </aside>
 
             <!-- Plot Area -->

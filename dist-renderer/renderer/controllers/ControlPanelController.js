@@ -6,6 +6,55 @@ export class ControlPanelController {
         this.selectedPort = null;
         this.view = new ControlPanelView(this);
     }
+    async onLoadPlotClick() {
+        try {
+            const result = await window.electronAPI.openPlotFile();
+            if (!result || result.canceled)
+                return;
+            if (result.error) {
+                alert('Failed to open plot file: ' + result.error);
+                return;
+            }
+            const file = result.json;
+            if (!file || !Array.isArray(file.plot_models)) {
+                alert('Invalid plot file: missing plot_models array');
+                return;
+            }
+            // Optional viewport application
+            if (typeof file.zoom === 'number') {
+                this.plotModel.setZoom(file.zoom);
+            }
+            if (Array.isArray(file.camera_position) && file.camera_position.length >= 2) {
+                const [px, py] = file.camera_position;
+                this.plotModel.setPan(px, py);
+            }
+            for (const pm of file.plot_models) {
+                if (!pm || !Array.isArray(pm.paths))
+                    continue;
+                const scale = typeof pm.scale === 'number' ? pm.scale : 1;
+                const posX = pm.position && typeof pm.position.x === 'number' ? pm.position.x : 0;
+                const posY = pm.position && typeof pm.position.y === 'number' ? pm.position.y : 0;
+                const id = typeof pm.id === 'string' ? pm.id : `imported-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+                const paths = [];
+                for (const path of pm.paths) {
+                    if (!Array.isArray(path))
+                        continue;
+                    const mapped = path
+                        .filter((p) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'number' && typeof p[1] === 'number')
+                        .map(([x, y]) => [posX + x * scale, posY + y * scale]);
+                    if (mapped.length > 0)
+                        paths.push(mapped);
+                }
+                if (paths.length > 0) {
+                    this.plotModel.addEntity({ id, paths });
+                }
+            }
+        }
+        catch (error) {
+            console.error('Error loading plot:', error);
+            alert('Error loading plot: ' + error);
+        }
+    }
     async onPenUpClick() {
         try {
             console.log('Sending pen up');

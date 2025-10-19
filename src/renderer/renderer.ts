@@ -1,13 +1,14 @@
 import { PlotModel, PlotEntity } from "./models/PlotModel.js";
 import { PathTools } from "./PathTools.js";
-import { ControlPanelView } from "./views/ControlPanelView.js";
-import { ControlPanelController } from "./controllers/ControlPanelController.js";
+import { ContextMenuView } from "./views/ContextMenuView.js";
+import { ContextMenuController } from "./controllers/ContextMenuController.js";
+import { PlotterGUIController } from "./controllers/PlotterGUIController.js";
 
 // Initialize the plot model and font
 const plotModel = new PlotModel();
+const contextMenuController = new ContextMenuController(plotModel, new ContextMenuView());
 
-let controlPanel: ControlPanelView;
-let controlPanelController: ControlPanelController;
+let guiController: PlotterGUIController;
 
 // Controls are managed by ControlPanelView
 
@@ -34,6 +35,7 @@ const A3_WIDTH_MM = 297;
 const A3_HEIGHT_MM = 420;
 
 // State
+let drawDots: boolean = false;
 let dataBuffer: number[] = [];
 let totalBytesReceived: number = 0;
 let lastSampleTime: number = Date.now();
@@ -62,9 +64,7 @@ window.addEventListener('beforeunload', async () => {
 
 // Setup event listeners
 function setupEventListeners(): void {
-    controlPanelController = new ControlPanelController(plotModel);
-    // Controller creates its own view; capture for status updates
-    controlPanel = (controlPanelController as any)["view"] as ControlPanelView;
+    guiController = new PlotterGUIController(plotModel);
 
     // Canvas interactions
     plotCanvas.addEventListener('wheel', handleWheel, { passive: false });
@@ -76,8 +76,8 @@ function setupEventListeners(): void {
     plotCanvas.addEventListener('contextmenu', handleContextMenu);
 
     // Hide context menu on any left-click or scroll elsewhere
-    document.addEventListener('click', () => PathTools.hideContextMenu());
-    plotCanvas.addEventListener('wheel', () => PathTools.hideContextMenu());
+    document.addEventListener('click', () => contextMenuController.hide());
+    plotCanvas.addEventListener('wheel', () => contextMenuController.hide());
 
     // Listen for serial data
     window.electronAPI.onSerialData(handleSerialData);
@@ -86,7 +86,7 @@ function setupEventListeners(): void {
 
 // Update connection status display
 function updateConnectionStatus(connected: boolean, text?: string): void {
-    controlPanel.setConnected(connected, text);
+    guiController.setConnected(connected, text);
 }
 
 // Handle incoming serial data
@@ -279,6 +279,17 @@ function drawEntity(ctx: CanvasRenderingContext2D, entity: PlotEntity, isSelecte
     entity.paths.forEach(path => {
         if (path.length === 0) return;
 
+        if (drawDots) {
+            ctx.fillStyle = 'rgba(255, 0, 0, 1)';
+            for (let i = 0; i < path.length; i++) {
+                ctx.beginPath();
+
+                ctx.arc(path[i][0], path[i][1], 3 / zoom, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+
+
         ctx.beginPath();
         ctx.moveTo(path[0][0], path[0][1]);
 
@@ -286,11 +297,13 @@ function drawEntity(ctx: CanvasRenderingContext2D, entity: PlotEntity, isSelecte
             ctx.lineTo(path[i][0], path[i][1]);
         }
 
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
-        ctx.fill();
-        ctx.strokeStyle = '#3b82f6';
-        ctx.lineWidth = 2 / zoom;
+
+        // ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
+        // ctx.fill();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1.5 / zoom;
         ctx.stroke();
+
     });
 
     if (isSelected) {
@@ -466,13 +479,7 @@ function handleContextMenu(e: MouseEvent): void {
     const contextClickScreenX = e.clientX - rect.left;
     const contextClickScreenY = e.clientY - rect.top;
     const [worldX, worldY] = screenToWorld(contextClickScreenX, contextClickScreenY);
-    PathTools.showContextMenu(
-        e.clientX,
-        e.clientY,
-        worldX,
-        worldY,
-        (entity) => plotModel.addEntity(entity)
-    );
+    contextMenuController.show(e.clientX, e.clientY, worldX, worldY);
 }
 
 

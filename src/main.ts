@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { SerialModel } from './models/SerialModel';
@@ -446,5 +446,30 @@ ipcMain.handle('plotter-initialize', async () => {
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Initialize failed';
     return { success: false, error: errorMsg };
+  }
+});
+
+// Open Plot File dialog and return parsed JSON
+ipcMain.handle('open-plot-file', async () => {
+  try {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+
+    const filePath = result.filePaths[0];
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const json = JSON.parse(raw);
+    return { canceled: false, json };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Failed to open or parse file';
+    return { canceled: false, error: errorMsg };
   }
 });

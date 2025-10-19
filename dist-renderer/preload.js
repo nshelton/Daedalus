@@ -36,4 +36,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     plotterSetOrigin: () => ipcRenderer.invoke('plotter-set-origin'),
     setMovingSpeed: (value) => ipcRenderer.invoke('set-moving-speed', value),
     getPlotterSettings: () => ipcRenderer.invoke('get-plotter-settings'),
+    // File operations
+    openPlotFile: () => ipcRenderer.invoke('open-plot-file'),
 });

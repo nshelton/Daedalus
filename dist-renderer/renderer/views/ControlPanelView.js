@@ -2,27 +2,173 @@ export class ControlPanelView {
     constructor(controller) {
         this.controller = controller;
         this.controller = controller;
-        this.statusIndicator = document.querySelector('.status-indicator');
-        this.plotterControls = document.getElementById('plotter-controls');
-        this.penUpBtn = document.getElementById('pen-up-btn');
-        this.penDownBtn = document.getElementById('pen-down-btn');
-        this.plotBtn = document.getElementById('plot-btn');
-        this.stopBtn = document.getElementById('stop-btn');
-        this.disengageBtn = document.getElementById('disengage-btn');
-        this.statusBtn = document.getElementById('status-btn');
-        this.penUpSlider = document.getElementById('pen-up-slider');
-        this.penDownSlider = document.getElementById('pen-down-slider');
-        this.speedSlider = document.getElementById('speed-slider');
-        this.movingSpeedSlider = document.getElementById('moving-speed-slider');
-        this.penUpValue = document.getElementById('pen-up-value');
-        this.penDownValue = document.getElementById('pen-down-value');
-        this.speedValue = document.getElementById('speed-value');
-        this.movingSpeedValue = document.getElementById('moving-speed-value');
+        const root = document.getElementById('control-panel-root');
+        if (!root)
+            throw new Error('control-panel-root not found');
+        const panel = document.createElement('div');
+        panel.className = 'control-panel';
+        const title = document.createElement('h2');
+        title.className = 'panel-title';
+        title.textContent = 'Plotter Controls';
+        panel.appendChild(title);
+        // Load button
+        const loadGroup = document.createElement('div');
+        loadGroup.className = 'button-group';
+        this.loadPlotBtn = document.createElement('button');
+        this.loadPlotBtn.id = 'load-plot-btn';
+        this.loadPlotBtn.className = 'btn btn-primary';
+        this.loadPlotBtn.textContent = 'Open';
+        loadGroup.appendChild(this.loadPlotBtn);
+        panel.appendChild(loadGroup);
+        // Connection status
+        const statusGroup = document.createElement('div');
+        statusGroup.className = 'control-group';
+        const statusWrap = document.createElement('div');
+        statusWrap.className = 'connection-status';
+        this.statusIndicator = document.createElement('span');
+        this.statusIndicator.className = 'status-indicator disconnected';
+        this.statusBtn = document.createElement('button');
+        this.statusBtn.id = 'status-btn';
+        this.statusBtn.className = 'status-btn';
+        this.statusBtn.textContent = 'Disconnected';
+        statusWrap.appendChild(this.statusIndicator);
+        statusWrap.appendChild(this.statusBtn);
+        statusGroup.appendChild(statusWrap);
+        panel.appendChild(statusGroup);
+        // Plotter controls container (hidden by default)
+        this.plotterControls = document.createElement('div');
+        this.plotterControls.id = 'plotter-controls';
+        this.plotterControls.style.display = 'none';
+        // Disengage
+        this.plotterControls.appendChild(this.createButtonGroup('disengage-btn', 'Disengage Motors', (btn) => {
+            this.disengageBtn = btn;
+        }));
+        // Pen up/down buttons
+        const penButtonsGroup = document.createElement('div');
+        penButtonsGroup.className = 'control-group';
+        const penButtonsWrap = document.createElement('div');
+        penButtonsWrap.className = 'button-group';
+        this.penUpBtn = document.createElement('button');
+        this.penUpBtn.id = 'pen-up-btn';
+        this.penUpBtn.className = 'btn btn-primary';
+        this.penUpBtn.textContent = 'Pen Up';
+        this.penDownBtn = document.createElement('button');
+        this.penDownBtn.id = 'pen-down-btn';
+        this.penDownBtn.className = 'btn btn-primary';
+        this.penDownBtn.textContent = 'Pen Down';
+        penButtonsWrap.appendChild(this.penUpBtn);
+        penButtonsWrap.appendChild(this.penDownBtn);
+        penButtonsGroup.appendChild(penButtonsWrap);
+        this.plotterControls.appendChild(penButtonsGroup);
+        // Pen up slider
+        const penUpGroup = document.createElement('div');
+        penUpGroup.className = 'control-group';
+        const penUpLabel = document.createElement('label');
+        penUpLabel.setAttribute('for', 'pen-up-slider');
+        penUpLabel.innerHTML = 'Pen Up Position: <span id="pen-up-value">20000</span>';
+        this.penUpValue = penUpLabel.querySelector('#pen-up-value');
+        this.penUpSlider = document.createElement('input');
+        this.penUpSlider.type = 'range';
+        this.penUpSlider.id = 'pen-up-slider';
+        this.penUpSlider.className = 'slider';
+        this.penUpSlider.min = '10000';
+        this.penUpSlider.max = '30000';
+        this.penUpSlider.value = '20000';
+        penUpGroup.appendChild(penUpLabel);
+        penUpGroup.appendChild(this.penUpSlider);
+        this.plotterControls.appendChild(penUpGroup);
+        // Pen down slider
+        const penDownGroup = document.createElement('div');
+        penDownGroup.className = 'control-group';
+        const penDownLabel = document.createElement('label');
+        penDownLabel.setAttribute('for', 'pen-down-slider');
+        penDownLabel.innerHTML = 'Pen Down Position: <span id="pen-down-value">15000</span>';
+        this.penDownValue = penDownLabel.querySelector('#pen-down-value');
+        this.penDownSlider = document.createElement('input');
+        this.penDownSlider.type = 'range';
+        this.penDownSlider.id = 'pen-down-slider';
+        this.penDownSlider.className = 'slider';
+        this.penDownSlider.min = '10000';
+        this.penDownSlider.max = '30000';
+        this.penDownSlider.value = '15000';
+        penDownGroup.appendChild(penDownLabel);
+        penDownGroup.appendChild(this.penDownSlider);
+        this.plotterControls.appendChild(penDownGroup);
+        // Speed slider
+        const speedGroup = document.createElement('div');
+        speedGroup.className = 'control-group';
+        const speedLabel = document.createElement('label');
+        speedLabel.setAttribute('for', 'speed-slider');
+        speedLabel.innerHTML = 'Plotting Speed: <span id="speed-value">50</span>%';
+        this.speedValue = speedLabel.querySelector('#speed-value');
+        this.speedSlider = document.createElement('input');
+        this.speedSlider.type = 'range';
+        this.speedSlider.id = 'speed-slider';
+        this.speedSlider.className = 'slider';
+        this.speedSlider.min = '1';
+        this.speedSlider.max = '100';
+        this.speedSlider.value = '50';
+        speedGroup.appendChild(speedLabel);
+        speedGroup.appendChild(this.speedSlider);
+        this.plotterControls.appendChild(speedGroup);
+        // Moving speed slider
+        const movingSpeedGroup = document.createElement('div');
+        movingSpeedGroup.className = 'control-group';
+        const movingSpeedLabel = document.createElement('label');
+        movingSpeedLabel.setAttribute('for', 'moving-speed-slider');
+        movingSpeedLabel.innerHTML = 'Moving Speed: <span id="moving-speed-value">75</span>%';
+        this.movingSpeedValue = movingSpeedLabel.querySelector('#moving-speed-value');
+        this.movingSpeedSlider = document.createElement('input');
+        this.movingSpeedSlider.type = 'range';
+        this.movingSpeedSlider.id = 'moving-speed-slider';
+        this.movingSpeedSlider.className = 'slider';
+        this.movingSpeedSlider.min = '1';
+        this.movingSpeedSlider.max = '100';
+        this.movingSpeedSlider.value = '75';
+        movingSpeedGroup.appendChild(movingSpeedLabel);
+        movingSpeedGroup.appendChild(this.movingSpeedSlider);
+        this.plotterControls.appendChild(movingSpeedGroup);
+        // Plot/Stop buttons
+        const plotButtonsGroup = document.createElement('div');
+        plotButtonsGroup.className = 'control-group';
+        const plotButtonsWrap = document.createElement('div');
+        plotButtonsWrap.className = 'button-group';
+        this.plotBtn = document.createElement('button');
+        this.plotBtn.id = 'plot-btn';
+        this.plotBtn.className = 'btn btn-primary';
+        this.plotBtn.textContent = 'PLOT';
+        this.stopBtn = document.createElement('button');
+        this.stopBtn.id = 'stop-btn';
+        this.stopBtn.className = 'btn btn-primary';
+        this.stopBtn.textContent = 'STOP';
+        plotButtonsWrap.appendChild(this.plotBtn);
+        plotButtonsWrap.appendChild(this.stopBtn);
+        plotButtonsGroup.appendChild(plotButtonsWrap);
+        this.plotterControls.appendChild(plotButtonsGroup);
+        panel.appendChild(this.plotterControls);
+        root.appendChild(panel);
         this.wireEvents();
+    }
+    createButtonGroup(id, label, assign) {
+        const group = document.createElement('div');
+        group.className = 'control-group';
+        const wrap = document.createElement('div');
+        wrap.className = 'button-group';
+        const btn = document.createElement('button');
+        btn.id = id;
+        btn.className = 'btn btn-secondary';
+        btn.textContent = label;
+        wrap.appendChild(btn);
+        group.appendChild(wrap);
+        assign(btn);
+        return group;
     }
     wireEvents() {
         // Buttons
         this.statusBtn.addEventListener('click', this.controller.onConnectClick.bind(this.controller));
+        if (this.loadPlotBtn) {
+            this.loadPlotBtn.addEventListener('click', this.controller.onLoadPlotClick.bind(this.controller));
+        }
         this.penUpBtn.addEventListener('click', this.controller.onPenUpClick.bind(this.controller));
         this.penDownBtn.addEventListener('click', this.controller.onPenDownClick.bind(this.controller));
         this.plotBtn.addEventListener('click', this.controller.onPlotClick.bind(this.controller));

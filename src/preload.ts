@@ -87,6 +87,8 @@ export interface ElectronAPI {
   plotterSetOrigin: () => Promise<OperationResult>;
   setMovingSpeed: (value: number) => Promise<OperationResult>;
   getPlotterSettings: () => Promise<PlotterSettings>;
+  // File operations
+  openPlotFile: () => Promise<{ canceled: boolean; json?: any; error?: string }>;
 }
 
 // Expose protected methods that allow the renderer process to use
@@ -129,5 +131,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   plotterSetOrigin: () => ipcRenderer.invoke('plotter-set-origin'),
   setMovingSpeed: (value: number) => ipcRenderer.invoke('set-moving-speed', value),
   getPlotterSettings: () => ipcRenderer.invoke('get-plotter-settings'),
+  // File operations
+  openPlotFile: () => ipcRenderer.invoke('open-plot-file'),
 } as ElectronAPI);
 

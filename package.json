@@ -9,7 +9,7 @@
     "start": "npm run build:ts && electron .",
     "dev": "concurrently \"npm run watch:ts\" \"npm run watch:electron\"",
     "watch:ts": "concurrently \"tsc -p tsconfig.main.json --watch\" \"tsc -p tsconfig.renderer.json --watch\"",
-    "watch:electron": "wait-on dist/main.js && nodemon --watch dist --exec \"electron . --dev\"",
+    "watch:electron": "wait-on dist/main.js && nodemon --watch dist --watch dist-renderer --watch index.html --watch styles.css --ext js,html,css --exec \"electron . --dev\"",
     "watch": "npm run watch:ts",
     "build": "npm run build:ts && electron-builder",
     "build:win": "npm run build:ts && electron-builder --win",
