@@ -1,6 +1,7 @@
 import { PlotModel } from "../models/PlotModel.js";
 import type { PlotEntity } from "../models/PlotModel.js";
 import { PathTools } from "../PathTools.js";
+import { ContextMenuController } from "../controllers/ContextMenuController.js";
 
 export class CanvasView {
 
@@ -12,9 +13,11 @@ export class CanvasView {
 
     private plotModel: PlotModel;
     private canvas = document.getElementById('plot-canvas') as HTMLCanvasElement;
+    private contextMenuController: ContextMenuController;
 
-    constructor(plotModel: PlotModel) {
+    constructor(plotModel: PlotModel, contextMenuController: ContextMenuController) {
         this.plotModel = plotModel;
+        this.contextMenuController = contextMenuController;
     }
 
     setupEventListeners(): void {
@@ -30,10 +33,6 @@ export class CanvasView {
     // Canvas setup and rendering
     setupCanvas(): void {
         this.canvas = document.getElementById('plot-canvas') as HTMLCanvasElement;
-
-        console.log('setupCanvas');
-        console.log(this.canvas);
-        console.log(this.canvas.parentElement);
         const container = this.canvas.parentElement!;
         this.canvas.width = container.clientWidth;
         this.canvas.height = container.clientHeight;
@@ -53,12 +52,6 @@ export class CanvasView {
         this.plotModel.setPan(panX, panY);
         this.plotModel.setZoom(zoom);
 
-        // Remove the test circle - the 1cm grid is already drawn in drawA3Paper()
-        // entities.push({
-        //     id: 'circle1',
-        //     paths: createCirclePaths(60, 60, 40) // Circle at (60, 60) from bottom-left with radius 40
-        // });
-
         // Start render loop
         requestAnimationFrame(() => this.render());
 
@@ -70,7 +63,6 @@ export class CanvasView {
         });
 
         this.setupEventListeners();
-
     }
 
     render(): void {
@@ -360,11 +352,11 @@ export class CanvasView {
 
     handleContextMenu(e: MouseEvent): void {
         e.preventDefault();
-        // const rect = this.canvas.getBoundingClientRect();
-        // const contextClickScreenX = e.clientX - rect.left;
-        // const contextClickScreenY = e.clientY - rect.top;
-        // const [worldX, worldY] = this.screenToWorld(contextClickScreenX, contextClickScreenY);
-        // contextMenuController.show(e.clientX, e.clientY, worldX, worldY);
+        const rect = this.canvas.getBoundingClientRect();
+        const contextClickScreenX = e.clientX - rect.left;
+        const contextClickScreenY = e.clientY - rect.top;
+        const [worldX, worldY] = this.screenToWorld(contextClickScreenX, contextClickScreenY);
+        this.contextMenuController.show(e.clientX, e.clientY, worldX, worldY);
     }
 
 

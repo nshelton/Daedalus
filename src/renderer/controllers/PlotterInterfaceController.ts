@@ -1,13 +1,11 @@
-import { ControlPanelView } from "../views/ControlPanelView.js";
 import { PlotModel } from "../models/PlotModel.js";
+import { PlotterControlView } from "../views/PlotterControlView.js";
 
-export class ControlPanelController {
-    private view: ControlPanelView;
+export class PlotterInterfaceController {
     private isConnected = false;
     private selectedPort: string | null = null;
 
     constructor(private plotModel: PlotModel) {
-        this.view = new ControlPanelView(this);
     }
 
     public async onLoadPlotClick(): Promise<void> {
@@ -162,56 +160,56 @@ export class ControlPanelController {
         return paths;
     }
 
-    public async onConnectClick(): Promise<void> {
+    public async onConnectClick(view: PlotterControlView): Promise<void> {
         if (this.isConnected) {
             try {
-                this.view.setConnected(false, 'Disconnecting...');
+                view.setConnected(false, 'Disconnecting...');
                 const result = await window.electronAPI.disconnectSerial();
                 if (result.success) {
                     this.isConnected = false;
                     this.selectedPort = null;
-                    this.view.setConnected(false, 'Disconnected');
+                    view.setConnected(false, 'Disconnected');
                 } else {
-                    this.view.setConnected(this.isConnected, this.selectedPort || 'Error');
+                    view.setConnected(this.isConnected, this.selectedPort || 'Error');
                 }
             } catch (error) {
                 console.error('Disconnect error:', error);
-                this.view.setConnected(this.isConnected, this.selectedPort || 'Error');
+                view.setConnected(this.isConnected, this.selectedPort || 'Error');
             }
             return;
         }
 
         try {
-            this.view.setConnected(false, 'Searching...');
+            view.setConnected(false, 'Searching...');
             const plotterPort = await window.electronAPI.findPlotterPort();
             if (!plotterPort) {
-                this.view.setConnected(false, 'Not Found');
+                view.setConnected(false, 'Not Found');
                 return;
             }
-            this.view.setConnected(false, 'Connecting...');
+            view.setConnected(false, 'Connecting...');
             const result = await window.electronAPI.connectSerial(plotterPort.path, 115200);
             if (result.success) {
                 this.isConnected = true;
                 this.selectedPort = plotterPort.path;
-                this.view.setConnected(true, plotterPort.path);
-                await this.initializePlotter();
+                view.setConnected(true, plotterPort.path);
+                await this.initializePlotter(view);
             } else {
-                this.view.setConnected(false, 'Failed');
+                view.setConnected(false, 'Failed');
             }
         } catch (error) {
             console.error('Connect failed:', error);
-            this.view.setConnected(false, 'Error');
+            view.setConnected(false, 'Error');
         }
     }
 
-    private async initializePlotter(): Promise<void> {
+    private async initializePlotter(view: PlotterControlView): Promise<void> {
         try {
             const plotterSettings = await window.electronAPI.getPlotterSettings();
             if (!plotterSettings) {
                 console.error('Failed to get plotter settings');
                 return;
             }
-            this.view.setInitialSettings(plotterSettings);
+            view.setInitialSettings(plotterSettings);
             const result = await window.electronAPI.plotterInitialize();
             if (result.success) {
                 await window.electronAPI.plotterSetOrigin();

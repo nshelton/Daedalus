@@ -15,82 +15,11 @@
 
 <body>
     <div class="app-container">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-content">
-                <h1 class="app-title">
-                    <svg class="app-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-                    </svg>
-                    USB Serial Plotter
-                </h1>
-            </div>
-        </header>
-
         <!-- Main Content -->
         <main class="main-content">
-            <!-- Sidebar -->
-            <aside class="sidebar">
-                <div id="gui-root"></div>
-            </aside>
-
-            <!-- Plot Area -->
             <section class="plot-area">
                 <div class="plot-container">
                     <canvas id="plot-canvas"></canvas>
-                </div>
-
-                <div class="data-info">
-                    <div class="info-item">
-                        <span class="info-label">Received:</span>
-                        <span class="info-value" id="data-received">0 bytes</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Sample Rate:</span>
-                        <span class="info-value" id="sample-rate">0 Hz</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Last Value:</span>
-                        <span class="info-value" id="last-value">—</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Distance Drawn:</span>
-                        <span class="info-value" id="distance-drawn">0.0 mm</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Sent:</span>
-                        <span class="info-value" id="commands-sent">0</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Completed:</span>
-                        <span class="info-value" id="commands-completed">0</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Queued:</span>
-                        <span class="info-value" id="queue-length">0</span>
-                    </div>
-                </div>
-
-                <div class="progress-cards">
-                    <div class="progress-card">
-                        <div class="progress-header">
-                            <span>Commands Completed</span>
-                            <span id="progress-completed-text">0%</span>
-                        </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" id="progress-completed" style="width:0%"></div>
-                        </div>
-                    </div>
-                    <div class="progress-card">
-                        <div class="progress-header">
-                            <span>Commands Queued</span>
-                            <span id="progress-queued-text">0%</span>
-                        </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill queued" id="progress-queued" style="width:0%"></div>
-                        </div>
-                    </div>
                 </div>
             </section>
         </main>
