@@ -328,6 +328,47 @@ button {
     color: var(--text-primary);
 }
 
+.progress-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.progress-card {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+}
+
+.progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.progress-bar {
+    height: 10px;
+    background-color: var(--surface-light);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background-color: var(--success);
+    transition: width 0.2s ease;
+}
+
+.progress-fill.queued {
+    background-color: var(--warning);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 8px;

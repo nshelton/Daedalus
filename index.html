@@ -127,6 +127,43 @@
                         <span class="info-label">Last Value:</span>
                         <span class="info-value" id="last-value">—</span>
                     </div>
+                    <div class="info-item">
+                        <span class="info-label">Distance Drawn:</span>
+                        <span class="info-value" id="distance-drawn">0.0 mm</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Sent:</span>
+                        <span class="info-value" id="commands-sent">0</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Completed:</span>
+                        <span class="info-value" id="commands-completed">0</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Queued:</span>
+                        <span class="info-value" id="queue-length">0</span>
+                    </div>
+                </div>
+
+                <div class="progress-cards">
+                    <div class="progress-card">
+                        <div class="progress-header">
+                            <span>Commands Completed</span>
+                            <span id="progress-completed-text">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-completed" style="width:0%"></div>
+                        </div>
+                    </div>
+                    <div class="progress-card">
+                        <div class="progress-header">
+                            <span>Commands Queued</span>
+                            <span id="progress-queued-text">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill queued" id="progress-queued" style="width:0%"></div>
+                        </div>
+                    </div>
                 </div>
             </section>
         </main>

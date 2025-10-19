@@ -13,7 +13,10 @@ interface AxidrawState {
     commandsSent: number;
     commandsCompleted: number;
     queue: AxidrawCommand[];
+    queueLength: number;
     startTime: Date | null;
+    totalPlannedCommands: number;
+    totalDistanceDrawnMm: number;
 }
 
 export class AxidrawModel {
@@ -27,7 +30,10 @@ export class AxidrawModel {
         commandsSent: 0,
         commandsCompleted: 0,
         queue: [],
-        startTime: null
+        queueLength: 0,
+        startTime: null,
+        totalPlannedCommands: 0,
+        totalDistanceDrawnMm: 0
     };
 
     getState(): Readonly<AxidrawState> {
@@ -86,6 +92,10 @@ export class AxidrawModel {
         return this.state.commandsSent;
     }
 
+    setCommandsSent(count: number): void {
+        this.state.commandsSent = count;
+    }
+
     incrementCommandsSent(): void {
         this.state.commandsSent++;
     }
@@ -104,18 +114,22 @@ export class AxidrawModel {
 
     enqueue(command: AxidrawCommand): void {
         this.state.queue.push(command);
+        this.state.queueLength = this.state.queue.length;
     }
 
     dequeue(): AxidrawCommand | undefined {
-        return this.state.queue.shift();
+        const cmd = this.state.queue.shift();
+        this.state.queueLength = this.state.queue.length;
+        return cmd;
     }
 
     clearQueue(): void {
         this.state.queue = [];
+        this.state.queueLength = 0;
     }
 
     getQueueLength(): number {
-        return this.state.queue.length;
+        return this.state.queueLength;
     }
 
     getStartTime(): Date | null {
@@ -124,6 +138,22 @@ export class AxidrawModel {
 
     setStartTime(time: Date | null): void {
         this.state.startTime = time;
+    }
+
+    getTotalPlannedCommands(): number {
+        return this.state.totalPlannedCommands;
+    }
+
+    setTotalPlannedCommands(count: number): void {
+        this.state.totalPlannedCommands = count;
+    }
+
+    getTotalDistanceDrawnMm(): number {
+        return this.state.totalDistanceDrawnMm;
+    }
+
+    setTotalDistanceDrawnMm(distanceMm: number): void {
+        this.state.totalDistanceDrawnMm = distanceMm;
     }
 
     reset(): void {
@@ -137,7 +167,10 @@ export class AxidrawModel {
             commandsSent: 0,
             commandsCompleted: 0,
             queue: [],
-            startTime: null
+            queueLength: 0,
+            startTime: null,
+            totalPlannedCommands: 0,
+            totalDistanceDrawnMm: 0
         };
     }
 }

@@ -34,6 +34,8 @@ export interface AxidrawState {
   commandsCompleted: number;
   queueLength: number;
   startTime: Date | null;
+  totalPlannedCommands: number;
+  totalDistanceDrawnMm: number;
 }
 
 export interface OperationResult {

@@ -11,6 +11,14 @@ const plotPlaceholder = document.querySelector('.plot-placeholder');
 const dataReceivedSpan = document.getElementById('data-received');
 const sampleRateSpan = document.getElementById('sample-rate');
 const lastValueSpan = document.getElementById('last-value');
+const distanceDrawnSpan = document.getElementById('distance-drawn');
+const commandsSentSpan = document.getElementById('commands-sent');
+const commandsCompletedSpan = document.getElementById('commands-completed');
+const queueLengthSpan = document.getElementById('queue-length');
+const progressCompleted = document.getElementById('progress-completed');
+const progressCompletedText = document.getElementById('progress-completed-text');
+const progressQueued = document.getElementById('progress-queued');
+const progressQueuedText = document.getElementById('progress-queued-text');
 // Add new slider and value elements
 // Controls are managed by ControlPanelView
 // A3 dimensions in mm
@@ -27,6 +35,8 @@ async function init() {
     setupCanvas();
     updateConnectionStatus(false, 'Disconnected');
     console.log('Plotter interface initialized');
+    // Start polling plotter state for UI metrics
+    startPlotterStatePolling();
 }
 // Cleanup on page unload/reload
 window.addEventListener('beforeunload', async () => {
@@ -91,6 +101,32 @@ function handleSerialData(data) {
     catch (error) {
         console.error('Error parsing data:', error);
     }
+}
+function startPlotterStatePolling() {
+    const poll = async () => {
+        try {
+            const state = await window.electronAPI.plotterGetState();
+            // Numbers
+            commandsSentSpan.textContent = String(state.commandsSent ?? 0);
+            commandsCompletedSpan.textContent = String(state.commandsCompleted ?? 0);
+            queueLengthSpan.textContent = String(state.queueLength ?? 0);
+            const dist = state.totalDistanceDrawnMm ?? 0;
+            distanceDrawnSpan.textContent = `${dist.toFixed(1)} mm`;
+            const planned = state.totalPlannedCommands ?? 0;
+            const completed = state.commandsCompleted ?? 0;
+            const queued = state.queueLength ?? 0;
+            const completedPct = planned > 0 ? Math.min(100, Math.max(0, (completed / planned) * 100)) : 0;
+            const queuedPct = planned > 0 ? Math.min(100, Math.max(0, (queued / planned) * 100)) : 0;
+            progressCompleted.style.width = `${completedPct.toFixed(1)}%`;
+            progressCompletedText.textContent = `${completedPct.toFixed(0)}%`;
+            progressQueued.style.width = `${queuedPct.toFixed(1)}%`;
+            progressQueuedText.textContent = `${queuedPct.toFixed(0)}%`;
+        }
+        catch (e) {
+            // Swallow transient errors
+        }
+    };
+    setInterval(poll, 200);
 }
 // Canvas setup and rendering
 function setupCanvas() {

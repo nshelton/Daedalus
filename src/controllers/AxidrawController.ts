@@ -247,6 +247,44 @@ export class AxidrawController {
 
         console.log(`Plotting ${validPaths.length} paths`);
 
+        // Compute per-job metrics before enqueuing
+        let plannedCommands = 0;
+        let penDownDistanceMm = 0;
+
+        if (doLift && validPaths.length > 0) {
+            plannedCommands += 1; // initial pen up
+        }
+
+        validPaths.forEach(path => {
+            // travel move to start
+            plannedCommands += 1; // moveTo start (not plotting)
+
+            if (doLift) {
+                plannedCommands += 1; // pen down
+            }
+
+            // draw segments
+            for (let i = 1; i < path.length; i++) {
+                plannedCommands += 1; // moveTo segment (plotting)
+                const dx = path[i][0] - path[i - 1][0];
+                const dy = path[i][1] - path[i - 1][1];
+                penDownDistanceMm += Math.hypot(dx, dy);
+            }
+
+            if (doLift) {
+                plannedCommands += 1; // pen up after path
+            }
+        });
+
+        // Return to origin move
+        plannedCommands += 1; // moveTo origin (not plotting)
+
+        // Reset per-job counters and set job totals
+        this.model.setCommandsSent(0);
+        this.model.setCommandsCompleted(0);
+        this.model.setTotalPlannedCommands(plannedCommands);
+        this.model.setTotalDistanceDrawnMm(penDownDistanceMm);
+
         // Ensure pen is up before any travel moves
         if (doLift && validPaths.length > 0) {
             this.model.enqueue({ type: 'up' });

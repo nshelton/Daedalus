@@ -4,7 +4,7 @@ import { SerialModel } from '../models/SerialModel';
 export class SerialController {
     private model: SerialModel;
     private port: SerialPort | null = null;
-    private dataCallback: ((data: string) => void) | null = null;
+    private dataCallbacks: Array<(data: string) => void> = [];
 
     constructor(model: SerialModel) {
         this.model = model;
@@ -75,8 +75,9 @@ export class SerialController {
                 });
 
                 this.port.on('data', (data: Buffer) => {
-                    if (this.dataCallback) {
-                        this.dataCallback(data.toString('utf8'));
+                    const str = data.toString('utf8');
+                    for (const cb of this.dataCallbacks) {
+                        try { cb(str); } catch { }
                     }
                 });
 
@@ -114,7 +115,7 @@ export class SerialController {
     }
 
     onData(callback: (data: string) => void): void {
-        this.dataCallback = callback;
+        this.dataCallbacks.push(callback);
     }
 
     async write(data: string | Buffer): Promise<void> {
