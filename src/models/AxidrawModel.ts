@@ -1,5 +1,5 @@
 interface AxidrawCommand {
-    type: 'move' | 'up' | 'down' | 'query' | 'reset';
+    type: 'move' | 'up' | 'down' | 'query' | 'reset' | 'sm';
     params?: any[];
 }
 

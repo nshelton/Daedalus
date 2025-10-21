@@ -1,5 +1,6 @@
 import { PlotModel } from "../models/PlotModel.js";
 import type { PlotEntity } from "../models/PlotModel.js";
+import { RasterUtils } from "../RasterUtils.js";
 import { PathTools } from "../PathTools.js";
 import { ContextMenuController } from "../controllers/ContextMenuController.js";
 
@@ -14,10 +15,17 @@ export class CanvasView {
     private plotModel: PlotModel;
     private canvas = document.getElementById('plot-canvas') as HTMLCanvasElement;
     private contextMenuController: ContextMenuController;
+    private rasterBitmapCache: Map<string, ImageBitmap> = new Map();
+    private rasterBitmapLoading: Set<string> = new Set();
 
     constructor(plotModel: PlotModel, contextMenuController: ContextMenuController) {
         this.plotModel = plotModel;
         this.contextMenuController = contextMenuController;
+        // Invalidate raster cache on any model change
+        this.plotModel.subscribe(() => {
+            this.rasterBitmapCache.clear();
+            this.rasterBitmapLoading.clear();
+        });
     }
 
     setupEventListeners(): void {
@@ -28,6 +36,8 @@ export class CanvasView {
         this.canvas.addEventListener('mouseleave', this.handleMouseUp.bind(this));
         this.canvas.addEventListener('dblclick', this.handleDoubleClick.bind(this));
         this.canvas.addEventListener('contextmenu', this.handleContextMenu.bind(this));
+        this.canvas.addEventListener('dragover', this.handleDragOver.bind(this));
+        this.canvas.addEventListener('drop', this.handleDrop.bind(this));
     }
 
     // Canvas setup and rendering
@@ -84,6 +94,9 @@ export class CanvasView {
         // Draw A3 paper
         this.drawA3Paper(zoom, ctx);
 
+        // Draw rasters first
+        this.drawRasters(ctx);
+
         // Draw entities
         const entities = this.plotModel.getEntities();
         const selectedEntityId = this.plotModel.getSelectedEntityId();
@@ -94,6 +107,39 @@ export class CanvasView {
         ctx.restore();
 
         requestAnimationFrame(this.render.bind(this));
+    }
+
+    async ensureRasterBitmap(id: string): Promise<void> {
+        if (this.rasterBitmapCache.has(id) || this.rasterBitmapLoading.has(id)) return;
+        this.rasterBitmapLoading.add(id);
+        try {
+            const raster = this.plotModel.getRasters().find(r => r.id === id);
+            if (!raster) return;
+            const bmp = await RasterUtils.rasterToImageBitmap(raster);
+            this.rasterBitmapCache.set(id, bmp);
+        } finally {
+            this.rasterBitmapLoading.delete(id);
+        }
+    }
+
+    drawRasters(ctx: CanvasRenderingContext2D): void {
+        const rasters = this.plotModel.getRasters();
+        for (const r of rasters) {
+            const bmp = this.rasterBitmapCache.get(r.id);
+            if (!bmp) {
+                // Fire and forget; it will render on next frames
+                this.ensureRasterBitmap(r.id);
+                continue;
+            }
+            const widthMm = r.width * r.pixelSizeMm;
+            const heightMm = r.height * r.pixelSizeMm;
+
+            ctx.save();
+            // Flip Y to match world coordinates (0,0 bottom-left)
+            ctx.scale(1, -1);
+            ctx.drawImage(bmp, r.x, -(r.y + heightMm), widthMm, heightMm);
+            ctx.restore();
+        }
     }
 
     drawA3Paper(zoom: number, ctx: CanvasRenderingContext2D): void {
@@ -360,6 +406,66 @@ export class CanvasView {
     }
 
 
+    private isImageFile(file: File): boolean {
+        const type = (file.type || '').toLowerCase();
+        if (type.startsWith('image/')) return true;
+        const name = file.name.toLowerCase();
+        return name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.gif') || name.endsWith('.webp') || name.endsWith('.bmp');
+    }
+
+    handleDragOver(e: DragEvent): void {
+        // Allow dropping images
+        if (!e.dataTransfer) return;
+        const items = e.dataTransfer.items;
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.kind === 'file') {
+                const file = item.getAsFile();
+                if (file && this.isImageFile(file)) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    return;
+                }
+            }
+        }
+    }
+
+    async handleDrop(e: DragEvent): Promise<void> {
+        if (!e.dataTransfer) return;
+        e.preventDefault();
+        const rect = this.canvas.getBoundingClientRect();
+        const screenX = (e.clientX ?? 0) - rect.left;
+        const screenY = (e.clientY ?? 0) - rect.top;
+        const [worldX, worldY] = this.screenToWorld(screenX, screenY);
+
+        const files: File[] = [];
+        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+            for (let i = 0; i < e.dataTransfer.items.length; i++) {
+                const item = e.dataTransfer.items[i];
+                if (item.kind === 'file') {
+                    const f = item.getAsFile();
+                    if (f && this.isImageFile(f)) files.push(f);
+                }
+            }
+        } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            for (let i = 0; i < e.dataTransfer.files.length; i++) {
+                const f = e.dataTransfer.files[i];
+                if (this.isImageFile(f)) files.push(f);
+            }
+        }
+
+        for (const file of files) {
+            try {
+                const bitmap = await RasterUtils.imageBitmapFromFile(file);
+                const raster = RasterUtils.rasterFromImageBitmap(bitmap, { xMm: worldX, yMm: worldY, pixelSizeMm: 0.2 });
+                this.plotModel.addRaster(raster);
+            } catch (err) {
+                console.error('Failed to import dropped image', err);
+            }
+        }
+    }
+
+
     screenToWorld(screenX: number, screenY: number): [number, number] {
         // Convert screen to plotter coordinates (0,0 at bottom-left)
         // Screen Y increases downward, plotter Y increases upward
@@ -409,7 +515,7 @@ export class CanvasView {
     // Scale an entity from a resize handle (maintains aspect ratio)
     scaleEntity(entity: PlotEntity, handle: string, worldX: number, worldY: number): void {
         const oldBounds = this.getEntityBounds(entity);
-        const minSize = 10;
+        const minSize = 1;
 
         let newBounds = { ...oldBounds };
         let scaleFactor: number;

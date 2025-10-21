@@ -1,5 +1,6 @@
 import { makeButton, makeButtonGroup, makeGroup, makeSlider } from "./GUIKit.js";
 import { PlotterInterfaceController } from "../controllers/PlotterInterfaceController.js";
+import type { PlotterSettings } from "../../preload";
 
 export class PlotterControlView {
     private statusIndicator: HTMLElement;
@@ -11,7 +12,6 @@ export class PlotterControlView {
     private stopBtn: HTMLButtonElement;
     private disengageBtn: HTMLButtonElement;
     private statusBtn: HTMLButtonElement;
-    private loadPlotBtn?: HTMLButtonElement;
 
     private penUpSlider: HTMLInputElement;
     private penDownSlider: HTMLInputElement;
@@ -39,16 +39,10 @@ export class PlotterControlView {
         panel.style.border = '1px solid #444';
         panel.style.borderRadius = '8px';
         panel.style.padding = '10px 12px';
-        panel.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+        panel.style.fontFamily = 'ui-monospace, IBM Plex Mono, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
         panel.style.fontSize = '12px';
         panel.style.minWidth = '220px';
         panel.style.boxShadow = '0 6px 18px rgba(0,0,0,0.45)';
-
-        // Load button
-        const loadGroup = makeButtonGroup();
-        this.loadPlotBtn = makeButton({ id: 'load-plot-btn', label: 'Open', className: 'btn btn-primary' });
-        loadGroup.appendChild(this.loadPlotBtn);
-        panel.appendChild(loadGroup);
 
         // Connection status
         const statusGroup = makeGroup();
@@ -75,18 +69,16 @@ export class PlotterControlView {
         this.plotterControls.appendChild(this.disengageBtn);
 
         // Pen up/down buttons
-        const penButtonsGroup = makeGroup();
-        const penButtonsWrap = makeButtonGroup();
-        this.penUpBtn = makeButton({ id: 'pen-up-btn', label: 'Pen Up' });
-        this.penDownBtn = makeButton({ id: 'pen-down-btn', label: 'Pen Down' });
-        penButtonsWrap.appendChild(this.penUpBtn);
-        penButtonsWrap.appendChild(this.penDownBtn);
-        penButtonsGroup.appendChild(penButtonsWrap);
+        const penButtonsGroup = makeButtonGroup();
+        this.penUpBtn = makeButton({ id: 'pen-up-btn', label: 'Up' });
+        this.penDownBtn = makeButton({ id: 'pen-down-btn', label: 'Down' });
+        penButtonsGroup.appendChild(this.penUpBtn);
+        penButtonsGroup.appendChild(this.penDownBtn);
         this.plotterControls.appendChild(penButtonsGroup);
 
         // Pen up slider
         {
-            const { group, slider, valueSpan } = makeSlider({ id: 'pen-up-slider', label: 'Pen Up Position', min: 10000, max: 30000, value: 20000, onInput: (v) => { this.penUpValue.textContent = String(v); } });
+            const { group, slider, valueSpan } = makeSlider({ id: 'pen-up-slider', label: 'Pen Up', min: 10000, max: 30000, value: 20000, onInput: (v) => { this.penUpValue.textContent = String(v); } });
             this.penUpSlider = slider;
             this.penUpValue = valueSpan;
             this.plotterControls.appendChild(group);
@@ -94,7 +86,7 @@ export class PlotterControlView {
 
         // Pen down slider
         {
-            const { group, slider, valueSpan } = makeSlider({ id: 'pen-down-slider', label: 'Pen Down Position', min: 10000, max: 30000, value: 15000, onInput: (v) => { this.penDownValue.textContent = String(v); } });
+            const { group, slider, valueSpan } = makeSlider({ id: 'pen-down-slider', label: 'Pen Down', min: 10000, max: 30000, value: 15000, onInput: (v) => { this.penDownValue.textContent = String(v); } });
             this.penDownSlider = slider;
             this.penDownValue = valueSpan;
             this.plotterControls.appendChild(group);
@@ -128,18 +120,13 @@ export class PlotterControlView {
 
         panel.appendChild(this.plotterControls);
         root.appendChild(panel);
-        this.controller.initializePlotter(this);
         this.wireEvents();
     }
 
 
     private wireEvents(): void {
         // Buttons
-        this.statusBtn.addEventListener('click', this.controller.onConnectClick.bind(this.controller));
-
-        if (this.loadPlotBtn) {
-            this.loadPlotBtn.addEventListener('click', this.controller.onLoadPlotClick.bind(this.controller));
-        }
+        this.statusBtn.addEventListener('click', () => this.controller.onConnectClick(this));
         this.penUpBtn.addEventListener('click', this.controller.onPenUpClick.bind(this.controller));
         this.penDownBtn.addEventListener('click', this.controller.onPenDownClick.bind(this.controller));
         this.plotBtn.addEventListener('click', this.controller.onPlotClick.bind(this.controller));

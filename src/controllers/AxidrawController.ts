@@ -365,6 +365,10 @@ export class AxidrawController {
                                 const isPlotting = next.params![2] || false; // Get plotting flag
                                 await this.executeMove(next.params![0], next.params![1], isPlotting);
                                 break;
+                            case 'sm':
+                                // params: [durationMs, axis1Steps, axis2Steps]
+                                await this.stepperMove(next.params![0], next.params![1], next.params![2]);
+                                break;
                             case 'up':
                                 await this.penUp(this.upDownDurationMs);
                                 break;

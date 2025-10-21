@@ -1,61 +1,14 @@
 import { PlotModel } from "../models/PlotModel.js";
 import { PlotterControlView } from "../views/PlotterControlView.js";
+import { planTrajectory, PlannerSettings } from "./MotionPlanner.js";
+import type { Vertex } from "../utils/geom.js";
+import { optimizePathOrder } from "../utils/pathOpt.js";
 
 export class PlotterInterfaceController {
     private isConnected = false;
     private selectedPort: string | null = null;
 
     constructor(private plotModel: PlotModel) {
-    }
-
-    public async onLoadPlotClick(): Promise<void> {
-        try {
-            const result = await window.electronAPI.openPlotFile();
-            if (!result || result.canceled) return;
-            if (result.error) {
-                alert('Failed to open plot file: ' + result.error);
-                return;
-            }
-
-            const file = result.json as any;
-            if (!file || !Array.isArray(file.plot_models)) {
-                alert('Invalid plot file: missing plot_models array');
-                return;
-            }
-
-            // Optional viewport application
-            if (typeof file.zoom === 'number') {
-                this.plotModel.setZoom(file.zoom);
-            }
-            if (Array.isArray(file.camera_position) && file.camera_position.length >= 2) {
-                const [px, py] = file.camera_position;
-                this.plotModel.setPan(px, py);
-            }
-
-            for (const pm of file.plot_models) {
-                if (!pm || !Array.isArray(pm.paths)) continue;
-                const scale: number = typeof pm.scale === 'number' ? pm.scale : 1;
-                const posX: number = pm.position && typeof pm.position.x === 'number' ? pm.position.x : 0;
-                const posY: number = pm.position && typeof pm.position.y === 'number' ? pm.position.y : 0;
-                const id: string = typeof pm.id === 'string' ? pm.id : `imported-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-
-                const paths: [number, number][][] = [];
-                for (const path of pm.paths) {
-                    if (!Array.isArray(path)) continue;
-                    const mapped = path
-                        .filter((p: any) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'number' && typeof p[1] === 'number')
-                        .map(([x, y]: [number, number]) => [posX + x * scale, posY + y * scale] as [number, number]);
-                    if (mapped.length > 0) paths.push(mapped);
-                }
-
-                if (paths.length > 0) {
-                    this.plotModel.addEntity({ id, paths });
-                }
-            }
-        } catch (error) {
-            console.error('Error loading plot:', error);
-            alert('Error loading plot: ' + error);
-        }
     }
 
     public async onPenUpClick(): Promise<void> {
@@ -84,12 +37,119 @@ export class PlotterInterfaceController {
                 alert('No entities to plot. Double-click on the canvas to add shapes.');
                 return;
             }
-            const result = await window.electronAPI.plotterPlotPath(paths, true);
-            if (result.success) {
-                await window.electronAPI.plotterStartQueue();
-            } else {
-                alert('Failed to plot: ' + result.error);
+            // Build planner settings (units: inches and seconds)
+            const settings = await window.electronAPI.getPlotterSettings();
+            const speedPct = settings?.speed ?? 1000; // plotting speed percent-like
+            const movePct = settings?.movingSpeed ?? 2000;
+
+            // Hardware constants mirrored from main AxidrawController
+            const STEPS_PER_MM = 80;
+            const STEPS_PER_INCH = STEPS_PER_MM * 25.4; // 2032
+            const MAX_STEPS_PER_SECOND = 5000;
+
+            const speedPenDown_in_s = (speedPct / 100) * MAX_STEPS_PER_SECOND / STEPS_PER_INCH;
+            const speedPenUp_in_s = (movePct / 100) * MAX_STEPS_PER_SECOND / STEPS_PER_INCH;
+
+            const plannerSettings: PlannerSettings = {
+                speedPenDown: Math.max(0.1, speedPenDown_in_s),
+                speedPenUp: Math.max(0.1, speedPenUp_in_s),
+                accelPenDown: Math.max(0.5, speedPenDown_in_s * 4), // reach v in ~0.25s
+                accelPenUp: Math.max(0.5, speedPenUp_in_s * 4),
+                cornering: 60,
+                timeSliceMs: 10,
+                maxStepRate: 5, // steps/ms
+                bounds: [[0, 0], [100, 100]], // inches, placeholder workspace
+                stepScale: STEPS_PER_INCH,
+                resolution: 1,
+                maxStepDistHr: 2 / STEPS_PER_INCH,
+                maxStepDistLr: 2 / STEPS_PER_INCH,
+                constSpeed: false,
+            };
+
+            const mmToIn = (mm: number) => mm / 25.4;
+            const toVertexIn = ([xmm, ymm]: [number, number]): Vertex => ({ x: mmToIn(xmm), y: mmToIn(ymm) });
+
+            // Initial state from device
+            const posRes = await window.electronAPI.plotterGetPosition();
+            let currentMm: [number, number] = posRes.success && posRes.position ? posRes.position : [0, 0];
+            let currentIn = toVertexIn(currentMm);
+
+            // Reorder paths to minimize pen-up travel (greedy nearest neighbor with flips)
+            const pathsOptimized = optimizePathOrder(paths, { x: currentMm[0], y: currentMm[1] });
+            paths = pathsOptimized;
+
+            // Ensure pen up before travel moves
+            await window.electronAPI.enqueuePen(true);
+            let queueStarted = false;
+
+            for (const path of paths) {
+                if (path.length < 1) continue;
+
+                // Travel move to start (pen up)
+                const startIn = toVertexIn(path[0]);
+                const travelTrajectory = planTrajectory(
+                    plannerSettings,
+                    [currentIn, startIn],
+                    { x: currentIn.x, y: currentIn.y, penUp: true }
+                );
+                if (travelTrajectory && travelTrajectory.moves.length) {
+                    const batch = travelTrajectory.moves.map(m => [m.dtMs, m.s1, m.s2] as [number, number, number]);
+                    await window.electronAPI.enqueueSmBatch(batch);
+                    if (!queueStarted) {
+                        await window.electronAPI.plotterStartQueue();
+                        queueStarted = true;
+                    }
+                    currentIn = { x: travelTrajectory.final.x, y: travelTrajectory.final.y } as Vertex;
+                } else {
+                    currentIn = startIn;
+                }
+
+                // Pen down for drawing
+                await window.electronAPI.enqueuePen(false);
+
+                // Draw path (pen down)
+                // Do not round user points when planning; rounding can inject jitter
+                const vertsIn: Vertex[] = path.map(p => toVertexIn(p));
+                const drawTrajectory = planTrajectory(
+                    plannerSettings,
+                    vertsIn,
+                    { x: currentIn.x, y: currentIn.y, penUp: false }
+                );
+                if (drawTrajectory && drawTrajectory.moves.length) {
+                    const batch = drawTrajectory.moves.map(m => [m.dtMs, m.s1, m.s2] as [number, number, number]);
+                    await window.electronAPI.enqueueSmBatch(batch);
+                    if (!queueStarted) {
+                        await window.electronAPI.plotterStartQueue();
+                        queueStarted = true;
+                    }
+                    currentIn = { x: drawTrajectory.final.x, y: drawTrajectory.final.y } as Vertex;
+                } else if (vertsIn.length > 0) {
+                    currentIn = vertsIn[vertsIn.length - 1];
+                }
+
+                // Pen up after path
+                await window.electronAPI.enqueuePen(true);
             }
+
+            // Return to origin (pen up) after all paths
+            await window.electronAPI.enqueuePen(true);
+            const originIn: Vertex = { x: 0, y: 0 };
+            if (Math.hypot(currentIn.x - originIn.x, currentIn.y - originIn.y) > 0) {
+                const returnTrajectory = planTrajectory(
+                    plannerSettings,
+                    [currentIn, originIn],
+                    { x: currentIn.x, y: currentIn.y, penUp: true }
+                );
+                if (returnTrajectory && returnTrajectory.moves.length) {
+                    const batch = returnTrajectory.moves.map(m => [m.dtMs, m.s1, m.s2] as [number, number, number]);
+                    await window.electronAPI.enqueueSmBatch(batch);
+                    if (!queueStarted) {
+                        await window.electronAPI.plotterStartQueue();
+                        queueStarted = true;
+                    }
+                }
+            }
+            if (!queueStarted) await window.electronAPI.plotterStartQueue();
         } catch (error) {
             console.error('Error plotting:', error);
             alert('Error plotting: ' + error);
@@ -152,8 +212,8 @@ export class PlotterInterfaceController {
         entities.forEach(entity => {
             entity.paths.forEach(path => {
                 if (path.length > 0) {
-                    const roundedPath = path.map(([x, y]) => [Math.round(x), Math.round(y)] as [number, number]);
-                    paths.push(roundedPath);
+                    // Preserve original precision; rounding to integers causes 1 mm quantization
+                    paths.push(path.map(([x, y]) => [x, y] as [number, number]));
                 }
             });
         });

@@ -1,25 +1,31 @@
-import { PlotModel, PlotEntity } from "./models/PlotModel.js";
+import { PlotModel } from "./models/PlotModel.js";
 import { ContextMenuView } from "./views/ContextMenuView.js";
 import { ContextMenuController } from "./controllers/ContextMenuController.js";
 import { CanvasView } from "./views/CanvasView.js";
 import { SerialView } from "./views/SerialView.js";
 import { PlotterControlView } from "./views/PlotterControlView.js";
 import { PlotterInterfaceController } from "./controllers/PlotterInterfaceController.js";
-
-// Initialize the plot model and font
+import { LayerControlView } from "./views/LayerControlView.js";
+import { PersistenceController } from "./controllers/PersistenceController.js";
+// Model 
 const plotModel = new PlotModel();
+const persistence = new PersistenceController({ plot: plotModel });
+
+// Controllers
 const contextMenuController = new ContextMenuController(plotModel, new ContextMenuView());
-const canvasView = new CanvasView(plotModel, contextMenuController);
 const plotterInterfaceController = new PlotterInterfaceController(plotModel);
 
 
-
-
+// Views
+const canvasView = new CanvasView(plotModel, contextMenuController);
 const serialView = new SerialView(document.body);
-const plotterControlView = new PlotterControlView(document.body, plotterInterfaceController);
+new LayerControlView(document.body, plotModel);
+new PlotterControlView(document.body, plotterInterfaceController);
 
 // Initialize the application
 async function init(): Promise<void> {
+    // Load saved state before setting up views
+    await persistence.load();
     canvasView.setupCanvas();
 
     serialView.updateConnectionStatus(false, 'Disconnected');

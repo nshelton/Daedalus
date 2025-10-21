@@ -135,9 +135,9 @@ function createWindow(): void {
   });
 
   // Open DevTools in development mode
-  if (process.argv.includes('--dev')) {
-    mainWindow.webContents.openDevTools();
-  }
+  // if (process.argv.includes('--dev')) {
+  //   mainWindow.webContents.openDevTools();
+  // }
 
   mainWindow.on('closed', async () => {
     // Cleanup serial connection
@@ -342,6 +342,29 @@ ipcMain.handle('plotter-plot-path', async (_event, paths: [number, number][][], 
   }
 });
 
+// Enqueue a batch of SM moves (duration, axis1, axis2)
+ipcMain.handle('plotter-enqueue-sm-batch', async (_event, moves: [number, number, number][]) => {
+  try {
+    for (const [duration, a1, a2] of moves) {
+      axidrawModel.enqueue({ type: 'sm', params: [duration, a1, a2] });
+    }
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Enqueue SM batch failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('plotter-enqueue-pen', async (_event, up: boolean) => {
+  try {
+    axidrawModel.enqueue({ type: up ? 'up' : 'down' });
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Enqueue pen failed';
+    return { success: false, error: errorMsg };
+  }
+});
+
 ipcMain.handle('plotter-move-to', async (_event, position: [number, number]) => {
   try {
     axidrawController.moveTo(position);
@@ -471,5 +494,32 @@ ipcMain.handle('open-plot-file', async () => {
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Failed to open or parse file';
     return { canceled: false, error: errorMsg };
+  }
+});
+
+// === App Model persistence (renderer-provided JSON) ===
+function getAppModelFile(): string {
+  return path.join(app.getPath('userData'), 'app-model.json');
+}
+
+ipcMain.handle('appmodel-save', async (_event, jsonString: string) => {
+  try {
+    fs.writeFileSync(getAppModelFile(), jsonString, 'utf8');
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Failed to save app model';
+    return { success: false, error: errorMsg };
+  }
+});
+
+ipcMain.handle('appmodel-load', async () => {
+  try {
+    const file = getAppModelFile();
+    if (!fs.existsSync(file)) return { success: true, jsonString: null };
+    const raw = fs.readFileSync(file, 'utf8');
+    return { success: true, jsonString: raw };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Failed to load app model';
+    return { success: false, error: errorMsg };
   }
 });

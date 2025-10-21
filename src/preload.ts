@@ -87,8 +87,13 @@ export interface ElectronAPI {
   plotterSetOrigin: () => Promise<OperationResult>;
   setMovingSpeed: (value: number) => Promise<OperationResult>;
   getPlotterSettings: () => Promise<PlotterSettings>;
+  enqueueSmBatch: (moves: [number, number, number][]) => Promise<OperationResult>;
+  enqueuePen: (up: boolean) => Promise<OperationResult>;
   // File operations
   openPlotFile: () => Promise<{ canceled: boolean; json?: any; error?: string }>;
+  // App model persistence
+  saveAppModel: (jsonString: string) => Promise<{ success: boolean; error?: string }>;
+  loadAppModel: () => Promise<{ success: boolean; jsonString: string | null; error?: string }>;
 }
 
 // Expose protected methods that allow the renderer process to use
@@ -131,7 +136,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   plotterSetOrigin: () => ipcRenderer.invoke('plotter-set-origin'),
   setMovingSpeed: (value: number) => ipcRenderer.invoke('set-moving-speed', value),
   getPlotterSettings: () => ipcRenderer.invoke('get-plotter-settings'),
+  enqueueSmBatch: (moves: [number, number, number][]) => ipcRenderer.invoke('plotter-enqueue-sm-batch', moves),
+  enqueuePen: (up: boolean) => ipcRenderer.invoke('plotter-enqueue-pen', up),
   // File operations
   openPlotFile: () => ipcRenderer.invoke('open-plot-file'),
+  // App model persistence
+  saveAppModel: (jsonString: string) => ipcRenderer.invoke('appmodel-save', jsonString),
+  loadAppModel: () => ipcRenderer.invoke('appmodel-load'),
 } as ElectronAPI);
 
