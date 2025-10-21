@@ -21,8 +21,10 @@ interface ViewportState {
 
 interface SelectionState {
     selectedEntityId: string | null;
+    selectedRasterId: string | null;
     isDraggingViewport: boolean;
     isDraggingEntity: boolean;
+    isDraggingRaster: boolean;
     isResizingEntity: boolean;
     dragStartX: number;
     dragStartY: number;
@@ -47,8 +49,10 @@ export class PlotModel {
         },
         selection: {
             selectedEntityId: null,
+            selectedRasterId: null,
             isDraggingViewport: false,
             isDraggingEntity: false,
+            isDraggingRaster: false,
             isResizingEntity: false,
             dragStartX: 0,
             dragStartY: 0,
@@ -134,6 +138,9 @@ export class PlotModel {
 
     removeRaster(id: string): void {
         this.state.rasters = this.state.rasters.filter(r => r.id !== id);
+        if (this.state.selection.selectedRasterId === id) {
+            this.state.selection.selectedRasterId = null;
+        }
         this.notify();
     }
 
@@ -175,6 +182,9 @@ export class PlotModel {
 
     setSelectedEntityId(id: string | null): void {
         this.state.selection.selectedEntityId = id;
+        if (id !== null) {
+            this.state.selection.selectedRasterId = null;
+        }
         this.notify();
     }
 
@@ -231,6 +241,29 @@ export class PlotModel {
         return this.state.selection.resizeHandle;
     }
 
+    // === Raster Selection & Dragging ===
+
+    getSelectedRasterId(): string | null {
+        return this.state.selection.selectedRasterId;
+    }
+
+    setSelectedRasterId(id: string | null): void {
+        this.state.selection.selectedRasterId = id;
+        if (id !== null) {
+            this.state.selection.selectedEntityId = null;
+        }
+        this.notify();
+    }
+
+    isDraggingRaster(): boolean {
+        return this.state.selection.isDraggingRaster;
+    }
+
+    setDraggingRaster(isDragging: boolean): void {
+        this.state.selection.isDraggingRaster = isDragging;
+        this.notify();
+    }
+
     // === Complete State ===
 
     getState(): Readonly<PlotState> {
@@ -253,8 +286,10 @@ export class PlotModel {
             },
             selection: {
                 selectedEntityId: null,
+                selectedRasterId: null,
                 isDraggingViewport: false,
                 isDraggingEntity: false,
+                isDraggingRaster: false,
                 isResizingEntity: false,
                 dragStartX: 0,
                 dragStartY: 0,
@@ -285,8 +320,10 @@ export class PlotModel {
                 },
                 selection: {
                     selectedEntityId: raw?.selection?.selectedEntityId ?? null,
+                    selectedRasterId: raw?.selection?.selectedRasterId ?? null,
                     isDraggingViewport: false,
                     isDraggingEntity: false,
+                    isDraggingRaster: false,
                     isResizingEntity: false,
                     dragStartX: 0,
                     dragStartY: 0,

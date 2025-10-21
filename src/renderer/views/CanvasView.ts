@@ -21,11 +21,6 @@ export class CanvasView {
     constructor(plotModel: PlotModel, contextMenuController: ContextMenuController) {
         this.plotModel = plotModel;
         this.contextMenuController = contextMenuController;
-        // Invalidate raster cache on any model change
-        this.plotModel.subscribe(() => {
-            this.rasterBitmapCache.clear();
-            this.rasterBitmapLoading.clear();
-        });
     }
 
     setupEventListeners(): void {
@@ -117,6 +112,8 @@ export class CanvasView {
             if (!raster) return;
             const bmp = await RasterUtils.rasterToImageBitmap(raster);
             this.rasterBitmapCache.set(id, bmp);
+        } catch (err) {
+            console.error('Failed to build raster bitmap', err);
         } finally {
             this.rasterBitmapLoading.delete(id);
         }
@@ -124,6 +121,7 @@ export class CanvasView {
 
     drawRasters(ctx: CanvasRenderingContext2D): void {
         const rasters = this.plotModel.getRasters();
+        const selectedRasterId = this.plotModel.getSelectedRasterId?.() ? this.plotModel.getSelectedRasterId() : null;
         for (const r of rasters) {
             const bmp = this.rasterBitmapCache.get(r.id);
             if (!bmp) {
@@ -138,6 +136,12 @@ export class CanvasView {
             // Flip Y to match world coordinates (0,0 bottom-left)
             ctx.scale(1, -1);
             ctx.drawImage(bmp, r.x, -(r.y + heightMm), widthMm, heightMm);
+            // Selection outline for rasters
+            if (selectedRasterId === r.id) {
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 2 / this.plotModel.getZoom();
+                ctx.strokeRect(r.x, -(r.y + heightMm), widthMm, heightMm);
+            }
             ctx.restore();
         }
     }
@@ -323,6 +327,14 @@ export class CanvasView {
             }
         }
 
+        // Check if clicking on raster first (above entities visually)
+        const clickedRaster = this.getRasterAtScreenPosition(mouseX, mouseY);
+        if (clickedRaster) {
+            this.plotModel.setSelectedRasterId(clickedRaster.id);
+            this.plotModel.setDraggingRaster(true);
+            return;
+        }
+
         // Check if clicking on entity
         const clickedEntity = this.getEntityAtPosition(worldX, worldY);
         if (clickedEntity) {
@@ -330,6 +342,7 @@ export class CanvasView {
             this.plotModel.setDraggingEntity(true);
         } else {
             this.plotModel.setSelectedEntityId(null);
+            if (this.plotModel.setSelectedRasterId) this.plotModel.setSelectedRasterId(null);
             this.plotModel.setDraggingViewport(true);
         }
     }
@@ -359,6 +372,20 @@ export class CanvasView {
                     this.plotModel.setDragStart(mouseX, mouseY);
                 }
             }
+        } else if (this.plotModel.isDraggingRaster && this.plotModel.isDraggingRaster()) {
+            const selectedRasterId = this.plotModel.getSelectedRasterId ? this.plotModel.getSelectedRasterId() : null;
+            if (selectedRasterId) {
+                const rasters = this.plotModel.getRasters();
+                const r = rasters.find(x => x.id === selectedRasterId);
+                if (r) {
+                    const [dragStartX, dragStartY] = this.plotModel.getDragStart();
+                    const zoom = this.plotModel.getZoom();
+                    const dx = (mouseX - dragStartX) / zoom;
+                    const dy = -(mouseY - dragStartY) / zoom;
+                    this.plotModel.updateRaster(selectedRasterId, { x: r.x + dx, y: r.y + dy });
+                    this.plotModel.setDragStart(mouseX, mouseY);
+                }
+            }
         } else if (this.plotModel.isResizingEntity()) {
             const selectedEntityId = this.plotModel.getSelectedEntityId();
             const resizeHandle = this.plotModel.getResizeHandle();
@@ -378,6 +405,7 @@ export class CanvasView {
     handleMouseUp(): void {
         this.plotModel.setDraggingViewport(false);
         this.plotModel.setDraggingEntity(false);
+        if (this.plotModel.setDraggingRaster) this.plotModel.setDraggingRaster(false);
         this.plotModel.setResizingEntity(false);
         this.plotModel.setResizeHandle(null);
     }
@@ -414,20 +442,9 @@ export class CanvasView {
     }
 
     handleDragOver(e: DragEvent): void {
-        // Allow dropping images
-        if (!e.dataTransfer) return;
-        const items = e.dataTransfer.items;
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            if (item.kind === 'file') {
-                const file = item.getAsFile();
-                if (file && this.isImageFile(file)) {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'copy';
-                    return;
-                }
-            }
-        }
+        // Always prevent default so drop is allowed in Electron
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     }
 
     async handleDrop(e: DragEvent): Promise<void> {
@@ -458,6 +475,7 @@ export class CanvasView {
             try {
                 const bitmap = await RasterUtils.imageBitmapFromFile(file);
                 const raster = RasterUtils.rasterFromImageBitmap(bitmap, { xMm: worldX, yMm: worldY, pixelSizeMm: 0.2 });
+                this.rasterBitmapCache.set(raster.id, bitmap);
                 this.plotModel.addRaster(raster);
             } catch (err) {
                 console.error('Failed to import dropped image', err);
@@ -500,6 +518,40 @@ export class CanvasView {
         for (const handle of handles) {
             if (Math.abs(x - handle.x) < handleSize && Math.abs(y - handle.y) < handleSize) {
                 return handle.id;
+            }
+        }
+        return null;
+    }
+
+    getRasterAtPosition(x: number, y: number): { id: string } | null {
+        const rasters = this.plotModel.getRasters();
+        for (let i = rasters.length - 1; i >= 0; i--) {
+            const r = rasters[i];
+            const widthMm = r.width * r.pixelSizeMm;
+            const heightMm = r.height * r.pixelSizeMm;
+            const xMin = Math.min(r.x, r.x + widthMm);
+            const xMax = Math.max(r.x, r.x + widthMm);
+            const yMin = Math.min(r.y, r.y + heightMm);
+            const yMax = Math.max(r.y, r.y + heightMm);
+            if (x >= xMin && x <= xMax && y >= yMin && y <= yMax) {
+                return { id: r.id };
+            }
+        }
+        return null;
+    }
+
+    getRasterAtScreenPosition(screenX: number, screenY: number): { id: string } | null {
+        const [panX, panY] = this.plotModel.getPan();
+        const zoom = this.plotModel.getZoom();
+        const rasters = this.plotModel.getRasters();
+        for (let i = rasters.length - 1; i >= 0; i--) {
+            const r = rasters[i];
+            const widthPx = r.width * r.pixelSizeMm * zoom;
+            const heightPx = r.height * r.pixelSizeMm * zoom;
+            const left = panX + r.x * zoom;
+            const top = panY - (r.y + r.height * r.pixelSizeMm) * zoom;
+            if (screenX >= left && screenX <= left + widthPx && screenY >= top && screenY <= top + heightPx) {
+                return { id: r.id };
             }
         }
         return null;
@@ -581,6 +633,17 @@ export class CanvasView {
                     return;
                 }
             }
+        }
+
+        // Cursor feedback for rasters using screen-space hit test
+        const [panX, panY] = this.plotModel.getPan();
+        const zoom = this.plotModel.getZoom();
+        const screenX = panX + worldX * zoom;
+        const screenY = panY - worldY * zoom;
+        const raster = this.getRasterAtScreenPosition(screenX, screenY);
+        if (raster) {
+            this.canvas.style.cursor = 'move';
+            return;
         }
 
         const entity = this.getEntityAtPosition(worldX, worldY);

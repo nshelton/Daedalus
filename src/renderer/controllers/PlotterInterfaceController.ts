@@ -2,7 +2,7 @@ import { PlotModel } from "../models/PlotModel.js";
 import { PlotterControlView } from "../views/PlotterControlView.js";
 import { planTrajectory, PlannerSettings } from "./MotionPlanner.js";
 import type { Vertex } from "../utils/geom.js";
-import { optimizePathOrder } from "../utils/pathOpt.js";
+import { optimizePathOrder, mergePathsWithinTolerance } from "../utils/pathOpt.js";
 
 export class PlotterInterfaceController {
     private isConnected = false;
@@ -32,6 +32,9 @@ export class PlotterInterfaceController {
         try {
             const entities = this.plotModel.getEntities();
             let paths = this.entitiesToPaths(entities);
+            // Merge paths whose endpoints are within tolerance (in mm)
+            const MERGE_TOL_MM = 0.2;
+            paths = mergePathsWithinTolerance(paths, MERGE_TOL_MM);
 
             if (paths.length === 0) {
                 alert('No entities to plot. Double-click on the canvas to add shapes.');

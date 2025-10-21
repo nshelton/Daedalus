@@ -49,6 +49,13 @@ window.addEventListener('beforeunload', async () => {
 
 function setupEventListeners(): void {
     window.electronAPI.onSerialData(serialView.handleSerialData);
+    // Prevent default navigation on file drops and enable copy cursor
+    window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+    });
+    window.addEventListener('drop', (e) => {
+        e.preventDefault();
+    });
 }
 
 // Convert plot entities to plotter paths (now just flatten and round coordinates)

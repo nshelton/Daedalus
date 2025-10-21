@@ -346,9 +346,9 @@ export class AxidrawController {
         const pending = commandsSent - commandsCompleted;
 
         // Only log when there's activity in the queue
-        if (queueLength > 0) {
-            console.log('Queue:', queueLength, 'Sent:', commandsSent, 'Completed:', commandsCompleted, 'Pending:', pending);
-        }
+        // if (queueLength > 0) {
+        // console.log('Queue:', queueLength, 'Sent:', commandsSent, 'Completed:', commandsCompleted, 'Pending:', pending);
+        // }
 
         // Don't overflow the buffer - keep at most 50 commands pending
         if (pending < 50 && queueLength > 0) {
@@ -358,7 +358,7 @@ export class AxidrawController {
             for (let i = 0; i < batchSize; i++) {
                 if (this.model.getQueueLength() > 0) {
                     const next = this.model.dequeue();
-                    console.log('Dequeued command:', next);
+                    // console.log('Dequeued command:', next);
                     if (next) {
                         switch (next.type) {
                             case 'move':

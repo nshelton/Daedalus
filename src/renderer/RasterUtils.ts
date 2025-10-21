@@ -2,10 +2,14 @@ import { Raster } from "./models/PlotModel.js";
 
 export class RasterUtils {
     static async imageBitmapFromFile(file: File): Promise<ImageBitmap> {
-        const arrayBuffer = await file.arrayBuffer();
-        const blob = new Blob([arrayBuffer], { type: file.type || 'application/octet-stream' });
-        const imageBitmap = await createImageBitmap(blob);
-        return imageBitmap;
+        // Use the File directly to preserve type; fall back to ArrayBuffer if needed
+        try {
+            return await createImageBitmap(file);
+        } catch {
+            const arrayBuffer = await file.arrayBuffer();
+            const blob = new Blob([arrayBuffer], { type: file.type || 'application/octet-stream' });
+            return await createImageBitmap(blob);
+        }
     }
 
     static rasterFromImageBitmap(image: ImageBitmap, options?: { xMm?: number; yMm?: number; pixelSizeMm?: number }): Raster {
@@ -58,7 +62,14 @@ export class RasterUtils {
 
     static async rasterToImageBitmap(raster: Raster): Promise<ImageBitmap> {
         const imageData = RasterUtils.rasterToImageData(raster);
-        return await createImageBitmap(imageData);
+        // Some Electron/Chromium versions may not support createImageBitmap(ImageData)
+        // Draw into a canvas and create the bitmap from the canvas for maximum compatibility
+        const canvas = document.createElement('canvas');
+        canvas.width = imageData.width;
+        canvas.height = imageData.height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.putImageData(imageData, 0, 0);
+        return await createImageBitmap(canvas);
     }
 }
 
