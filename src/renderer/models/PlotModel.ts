@@ -25,6 +25,7 @@ interface SelectionState {
     isDraggingViewport: boolean;
     isDraggingEntity: boolean;
     isDraggingRaster: boolean;
+    isResizingRaster: boolean;
     isResizingEntity: boolean;
     dragStartX: number;
     dragStartY: number;
@@ -53,6 +54,7 @@ export class PlotModel {
             isDraggingViewport: false,
             isDraggingEntity: false,
             isDraggingRaster: false,
+            isResizingRaster: false,
             isResizingEntity: false,
             dragStartX: 0,
             dragStartY: 0,
@@ -222,6 +224,15 @@ export class PlotModel {
         return this.state.selection.isResizingEntity;
     }
 
+    setResizingRaster(isResizing: boolean): void {
+        this.state.selection.isResizingRaster = isResizing;
+        this.notify();
+    }
+
+    isResizingRaster(): boolean {
+        return this.state.selection.isResizingRaster;
+    }
+
     setDragStart(x: number, y: number): void {
         this.state.selection.dragStartX = x;
         this.state.selection.dragStartY = y;
@@ -290,6 +301,7 @@ export class PlotModel {
                 isDraggingViewport: false,
                 isDraggingEntity: false,
                 isDraggingRaster: false,
+                isResizingRaster: false,
                 isResizingEntity: false,
                 dragStartX: 0,
                 dragStartY: 0,
@@ -324,6 +336,7 @@ export class PlotModel {
                     isDraggingViewport: false,
                     isDraggingEntity: false,
                     isDraggingRaster: false,
+                    isResizingRaster: false,
                     isResizingEntity: false,
                     dragStartX: 0,
                     dragStartY: 0,

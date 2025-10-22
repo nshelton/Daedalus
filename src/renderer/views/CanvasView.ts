@@ -1,5 +1,5 @@
 import { PlotModel } from "../models/PlotModel.js";
-import type { PlotEntity } from "../models/PlotModel.js";
+import type { PlotEntity, Raster } from "../models/PlotModel.js";
 import { RasterUtils } from "../RasterUtils.js";
 import { PathTools } from "../PathTools.js";
 import { ContextMenuController } from "../controllers/ContextMenuController.js";
@@ -44,6 +44,8 @@ export class CanvasView {
 
         // Hide placeholder, show canvas
         this.canvas.style.display = 'block';
+        // Prefer nearest-neighbor upscaling for rasters
+        (this.canvas.style as any).imageRendering = 'pixelated';
 
         // Position viewport so (0,0) is bottom-left of A3 paper
         // Center the paper on screen with some padding
@@ -134,13 +136,31 @@ export class CanvasView {
 
             ctx.save();
             // Flip Y to match world coordinates (0,0 bottom-left)
-            ctx.scale(1, -1);
+            // ctx.scale(1, -1);
+            // Disable smoothing so drawImage uses nearest-neighbor
+            (ctx as any).imageSmoothingEnabled = false;
+            if ('imageSmoothingQuality' in ctx) (ctx as any).imageSmoothingQuality = 'low';
             ctx.drawImage(bmp, r.x, -(r.y + heightMm), widthMm, heightMm);
             // Selection outline for rasters
             if (selectedRasterId === r.id) {
                 ctx.strokeStyle = '#22c55e';
                 ctx.lineWidth = 2 / this.plotModel.getZoom();
                 ctx.strokeRect(r.x, -(r.y + heightMm), widthMm, heightMm);
+
+                // Draw resize handles (nw, ne, sw, se) similar to entities
+                const handleSize = 8 / this.plotModel.getZoom();
+                ctx.fillStyle = '#22c55e';
+                // world corners
+                const nw = { x: r.x, y: r.y + heightMm };
+                const ne = { x: r.x + widthMm, y: r.y + heightMm };
+                const sw = { x: r.x, y: r.y };
+                const se = { x: r.x + widthMm, y: r.y };
+                const corners = [nw, ne, sw, se];
+                for (const c of corners) {
+                    const cx = c.x;
+                    const cyCanvas = -c.y;
+                    ctx.fillRect(cx - handleSize / 2, cyCanvas - handleSize / 2, handleSize, handleSize);
+                }
             }
             ctx.restore();
         }
@@ -194,7 +214,6 @@ export class CanvasView {
         ctx.restore();
     }
 
-
     drawEntity(entity: PlotEntity, isSelected: boolean, zoom: number, ctx: CanvasRenderingContext2D): void {
         ctx.save();
 
@@ -215,14 +234,12 @@ export class CanvasView {
                 }
             }
 
-
             ctx.beginPath();
             ctx.moveTo(path[0][0], path[0][1]);
 
             for (let i = 1; i < path.length; i++) {
                 ctx.lineTo(path[i][0], path[i][1]);
             }
-
 
             // ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
             // ctx.fill();
@@ -327,6 +344,21 @@ export class CanvasView {
             }
         }
 
+        // Check raster resize handles if a raster is selected
+        const selectedRasterId = this.plotModel.getSelectedRasterId ? this.plotModel.getSelectedRasterId() : null;
+        if (selectedRasterId) {
+            const r = this.plotModel.getRasters().find(x => x.id === selectedRasterId);
+            if (r) {
+                const bounds = { x: r.x, y: r.y, width: r.width * r.pixelSizeMm, height: r.height * r.pixelSizeMm };
+                const handle = this.getHandleAtPosition(bounds, worldX, worldY);
+                if (handle) {
+                    this.plotModel.setResizingRaster?.(true);
+                    this.plotModel.setResizeHandle(handle);
+                    return;
+                }
+            }
+        }
+
         // Check if clicking on raster first (above entities visually)
         const clickedRaster = this.getRasterAtScreenPosition(mouseX, mouseY);
         if (clickedRaster) {
@@ -386,6 +418,15 @@ export class CanvasView {
                     this.plotModel.setDragStart(mouseX, mouseY);
                 }
             }
+        } else if (this.plotModel.isResizingRaster && this.plotModel.isResizingRaster()) {
+            const rId = this.plotModel.getSelectedRasterId ? this.plotModel.getSelectedRasterId() : null;
+            const handle = this.plotModel.getResizeHandle();
+            if (rId && handle) {
+                const r = this.plotModel.getRasters().find(x => x.id === rId);
+                if (r) {
+                    this.scaleRaster(r, handle, worldX, worldY);
+                }
+            }
         } else if (this.plotModel.isResizingEntity()) {
             const selectedEntityId = this.plotModel.getSelectedEntityId();
             const resizeHandle = this.plotModel.getResizeHandle();
@@ -406,6 +447,7 @@ export class CanvasView {
         this.plotModel.setDraggingViewport(false);
         this.plotModel.setDraggingEntity(false);
         if (this.plotModel.setDraggingRaster) this.plotModel.setDraggingRaster(false);
+        if (this.plotModel.setResizingRaster) this.plotModel.setResizingRaster(false);
         this.plotModel.setResizingEntity(false);
         this.plotModel.setResizeHandle(null);
     }
@@ -635,7 +677,21 @@ export class CanvasView {
             }
         }
 
-        // Cursor feedback for rasters using screen-space hit test
+        // Raster cursor feedback: show resize cursor on handles, move inside raster
+        const selectedRasterId = this.plotModel.getSelectedRasterId ? this.plotModel.getSelectedRasterId() : null;
+        if (selectedRasterId) {
+            const r = this.plotModel.getRasters().find(x => x.id === selectedRasterId);
+            if (r) {
+                const bounds = { x: r.x, y: r.y, width: r.width * r.pixelSizeMm, height: r.height * r.pixelSizeMm };
+                const handle = this.getHandleAtPosition(bounds, worldX, worldY);
+                if (handle) {
+                    this.canvas.style.cursor = this.getCursorForHandle(handle);
+                    return;
+                }
+            }
+        }
+
+        // Fallback: hover inside any raster -> move
         const [panX, panY] = this.plotModel.getPan();
         const zoom = this.plotModel.getZoom();
         const screenX = panX + worldX * zoom;
@@ -658,5 +714,49 @@ export class CanvasView {
             'se': 'sw-resize'   // Dragging SE corner - cursor should point SE
         };
         return cursors[handle] || 'default';
+    }
+
+    private scaleRaster(raster: Raster, handle: string, worldX: number, worldY: number): void {
+        const oldWidthMm = raster.width * raster.pixelSizeMm;
+        const oldHeightMm = raster.height * raster.pixelSizeMm;
+        const minSize = 1;
+
+        // Opposite corner per handle in world coords
+        let ox = raster.x;
+        let oy = raster.y;
+        if (handle === 'sw') { ox = raster.x + oldWidthMm; oy = raster.y; }
+        else if (handle === 'ne') { ox = raster.x; oy = raster.y; }
+        else if (handle === 'nw') { ox = raster.x + oldWidthMm; oy = raster.y + oldHeightMm; }
+        // 'se' keeps opposite at bottom-left (default)
+
+        const dist = (x0: number, y0: number, x1: number, y1: number) => Math.hypot(x1 - x0, y1 - y0);
+        const d = dist(worldX, worldY, ox, oy);
+        const d0 = dist(raster.x + oldWidthMm, raster.y + oldHeightMm, raster.x, raster.y);
+        const scale = Math.max(minSize / Math.min(oldWidthMm, oldHeightMm), d0 === 0 ? 1 : d / d0);
+
+        const newWidthMm = oldWidthMm * scale;
+        const newHeightMm = oldHeightMm * scale;
+        const newPixelSize = Math.max(0.01, raster.pixelSizeMm * scale);
+
+        // Adjust origin based on handle so opposite corner stays fixed
+        let newX = raster.x;
+        let newY = raster.y;
+        switch (handle) {
+            case 'se':
+                // origin unchanged
+                break;
+            case 'sw':
+                newX = raster.x + oldWidthMm - newWidthMm;
+                break;
+            case 'ne':
+                newY = raster.y + oldHeightMm - newHeightMm;
+                break;
+            case 'nw':
+                newX = raster.x + oldWidthMm - newWidthMm;
+                newY = raster.y + oldHeightMm - newHeightMm;
+                break;
+        }
+
+        this.plotModel.updateRaster(raster.id, { x: newX, y: newY, pixelSizeMm: newPixelSize });
     }
 }

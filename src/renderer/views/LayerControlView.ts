@@ -168,7 +168,11 @@ export class LayerControlView {
             const meta = document.createElement('div');
             const numPaths = entity.paths.length;
             const numPoints = entity.paths.reduce((acc, p) => acc + p.length, 0);
-            meta.textContent = `${numPaths} paths · ${numPoints} pts`;
+            const min_x = Math.round(Math.min(...entity.paths.flat().map(p => p[0])));
+            const max_x = Math.round(Math.max(...entity.paths.flat().map(p => p[0])));
+            const min_y = Math.round(Math.min(...entity.paths.flat().map(p => p[1])));
+            const max_y = Math.round(Math.max(...entity.paths.flat().map(p => p[1])));
+            meta.textContent = `${numPaths} paths · ${numPoints} pts (${min_x}, ${min_y})-(${max_x}, ${max_y})`;
             meta.style.opacity = '0.8';
             meta.style.marginLeft = '8px';
             item.appendChild(meta);
@@ -209,7 +213,8 @@ export class LayerControlView {
             item.appendChild(title);
 
             const meta = document.createElement('div');
-            meta.textContent = `${r.width}×${r.height} px · ${r.pixelSizeMm} mm/px`;
+
+            meta.textContent = `${r.width}×${r.height} px · ${Number(r.pixelSizeMm).toFixed(2)} mm/px (${Math.round(r.x)}, ${Math.round(r.y)})`;
             meta.style.opacity = '0.8';
             meta.style.marginLeft = '8px';
             item.appendChild(meta);
