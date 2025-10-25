@@ -90,7 +90,7 @@ export class FilterPanelView {
             }).catch(() => { });
         }
 
-        // Progress bar (future: driven by model progress state)
+        // Progress bar (driven by model progress state)
         const prog = document.createElement('div');
         prog.style.height = '6px';
         prog.style.background = '#111';
@@ -100,8 +100,11 @@ export class FilterPanelView {
         prog.style.margin = '6px 0 8px 0';
         const bar = document.createElement('div');
         bar.style.height = '100%';
-        bar.style.width = '0%';
+        const progress = (raster as any).filterProgress as number | null | undefined;
+        const pct = (typeof progress === 'number' && isFinite(progress)) ? Math.max(0, Math.min(1, progress)) * 100 : 0;
+        bar.style.width = `${pct}%`;
         bar.style.background = '#3b82f6';
+        prog.style.display = (typeof progress === 'number') ? 'block' : 'none';
         prog.appendChild(bar);
         root.appendChild(prog);
 

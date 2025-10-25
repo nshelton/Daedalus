@@ -20,14 +20,15 @@ export class CanvasView {
     private contextMenuController: ContextMenuController;
     private rasterBitmapCache: Map<string, ImageBitmap> = new Map();
     private rasterBitmapLoading: Set<string> = new Set();
-    private filterRegistry?: FilterRegistry;
     private filterChain?: FilterChainController;
     private rasterPathPreview: Map<string, PathLike[]> = new Map();
+    // Preview evaluation throttling/state
+    private previewInFlight: Set<string> = new Set();
+    private lastPreviewKey: Map<string, string> = new Map();
 
-    constructor(plotModel: PlotModel, contextMenuController: ContextMenuController, filterRegistry?: FilterRegistry, filterChain?: FilterChainController) {
+    constructor(plotModel: PlotModel, contextMenuController: ContextMenuController, _filterRegistry?: FilterRegistry, filterChain?: FilterChainController) {
         this.plotModel = plotModel;
         this.contextMenuController = contextMenuController;
-        this.filterRegistry = filterRegistry;
         this.filterChain = filterChain;
     }
 
@@ -117,6 +118,7 @@ export class CanvasView {
             const raster = this.plotModel.getRasters().find(r => r.id === id);
             if (!raster) return;
             const bmp = await RasterUtils.rasterToImageBitmap(raster);
+            this.ensureDarkTintedBitmap(id);
             this.rasterBitmapCache.set(id, bmp);
         } catch (err) {
             console.error('Failed to build raster bitmap', err);
@@ -140,54 +142,67 @@ export class CanvasView {
                 // Temporarily construct a mock Raster to call existing codepaths
                 const r = this.plotModel.getRasters().find(x => `r:${x.id}` === layer.id);
                 if (r) {
-                    // Draw with filter preview logic
+                    // Draw with filter preview logic (throttled)
                     // Inline minimal draw mirroring drawRasters for this raster only
                     let bmp = this.rasterBitmapCache.get(r.id);
                     let baseKey = r.id;
                     if (this.filterChain) {
-                        this.filterChain.evaluatePreview(r.id).then(preview => {
-                            if (!preview) return;
-                            if (preview.kind === 'paths') {
-                                this.rasterPathPreview.set(r.id, preview.value as any);
-                                this.rasterBitmapCache.delete(r.id + ':preview');
-                            } else {
-                                this.rasterPathPreview.delete(r.id);
-                                const imageData = preview.value as ImageData;
-                                (async () => {
-                                    const gray = new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
-                                    const d = gray.data;
-                                    for (let i = 0; i < d.length; i += 4) {
-                                        const rr = d[i], gg = d[i + 1], bb = d[i + 2];
-                                        const v = Math.round(0.299 * rr + 0.587 * gg + 0.114 * bb);
-                                        d[i] = v; d[i + 1] = v; d[i + 2] = v; d[i + 3] = (v === 255) ? 0 : 255;
-                                    }
-                                    const cv = document.createElement('canvas');
-                                    cv.width = gray.width; cv.height = gray.height;
-                                    const c2 = cv.getContext('2d')!;
-                                    c2.putImageData(gray, 0, 0);
-                                    const b = await createImageBitmap(cv);
-                                    this.rasterBitmapCache.set(r.id + ':preview', b);
-                                })();
-                            }
-                        }).catch(() => { });
+                        // Compute a lightweight key of preview-affecting state
+                        const previewKey = JSON.stringify({
+                            i: r.id,
+                            p: r.previewIndex ?? null,
+                            f: (r.filters ?? []).map(f => ({ id: f.defId, en: !!f.enabled, pr: f.params }))
+                        });
+                        const lastKey = this.lastPreviewKey.get(r.id);
+                        const shouldEvaluate = previewKey !== lastKey && !this.previewInFlight.has(r.id);
+                        if (shouldEvaluate) {
+                            this.previewInFlight.add(r.id);
+                            this.filterChain.evaluatePreview(r.id).then(preview => {
+                                if (!preview) return;
+                                if (preview.kind === 'paths') {
+                                    this.rasterPathPreview.set(r.id, preview.value as any);
+                                    this.rasterBitmapCache.delete(r.id + ':preview');
+                                } else {
+                                    this.rasterPathPreview.delete(r.id);
+                                    const imageData = preview.value as ImageData;
+                                    (async () => {
+                                        const gray = new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
+                                        const d = gray.data;
+                                        for (let i = 0; i < d.length; i += 4) {
+                                            const rr = d[i], gg = d[i + 1], bb = d[i + 2];
+                                            const v = Math.round(0.299 * rr + 0.587 * gg + 0.114 * bb);
+                                            d[i] = v; d[i + 1] = v; d[i + 2] = v; d[i + 3] = (v === 255) ? 0 : 255;
+                                        }
+                                        const cv = document.createElement('canvas');
+                                        cv.width = gray.width; cv.height = gray.height;
+                                        const c2 = cv.getContext('2d')!;
+                                        c2.putImageData(gray, 0, 0);
+                                        const b = await createImageBitmap(cv);
+                                        this.rasterBitmapCache.set(r.id + ':preview', b);
+                                    })();
+                                }
+                                this.lastPreviewKey.set(r.id, previewKey);
+                            }).catch(() => { /* ignore */ }).finally(() => {
+                                this.previewInFlight.delete(r.id);
+                            });
+                        }
                         const p = this.rasterPathPreview.get(r.id);
                         if (p && p.length) {
                             this.drawPathsForRaster(ctx, r, p);
-                            // selection outline
-                            if (selectedLayerId === `r:${r.id}`) {
+                            // Draw selection outline/handles for the raster layer even in path-preview mode
+                            if (selectedLayerId === layer.id && (this.plotModel as any).getLayerBounds) {
+                                const b = (this.plotModel as any).getLayerBounds(layer) as { x: number; y: number; width: number; height: number };
                                 ctx.save();
                                 const zoomSel = this.plotModel.getZoom();
-                                const widthMmSel = r.width * r.pixelSizeMm;
-                                const heightMmSel = r.height * r.pixelSizeMm;
                                 ctx.strokeStyle = '#22c55e';
                                 ctx.lineWidth = 2 / zoomSel;
-                                ctx.strokeRect(r.x, -(r.y + heightMmSel), widthMmSel, heightMmSel);
+                                ctx.strokeRect(b.x, -(b.y + b.height), b.width, b.height);
                                 const handleSize = 8 / zoomSel;
                                 ctx.fillStyle = '#22c55e';
-                                const nw = { x: r.x, y: r.y + heightMmSel };
-                                const ne = { x: r.x + widthMmSel, y: r.y + heightMmSel };
-                                const sw = { x: r.x, y: r.y };
-                                const se = { x: r.x + widthMmSel, y: r.y };
+                                const nw = { x: b.x, y: b.y + b.height };
+                                const ne = { x: b.x + b.width, y: b.y + b.height };
+                                const sw = { x: b.x, y: b.y };
+                                const se = { x: b.x + b.width, y: b.y };
                                 for (const c of [nw, ne, sw, se]) ctx.fillRect(c.x - handleSize / 2, -c.y - handleSize / 2, handleSize, handleSize);
                                 ctx.restore();
                             }
@@ -218,18 +233,6 @@ export class CanvasView {
                         (ctx as any).imageSmoothingEnabled = smoothing;
                         if ('imageSmoothingQuality' in ctx) (ctx as any).imageSmoothingQuality = smoothing ? 'high' : 'low';
                         ctx.drawImage(bmp, r.x, -(r.y + heightMm), widthMm, heightMm);
-                        if (selectedLayerId === `r:${r.id}`) {
-                            ctx.strokeStyle = '#22c55e';
-                            ctx.lineWidth = 2 / this.plotModel.getZoom();
-                            ctx.strokeRect(r.x, -(r.y + heightMm), widthMm, heightMm);
-                            const handleSize = 8 / this.plotModel.getZoom();
-                            ctx.fillStyle = '#22c55e';
-                            const nw = { x: r.x, y: r.y + heightMm };
-                            const ne = { x: r.x + widthMm, y: r.y + heightMm };
-                            const sw = { x: r.x, y: r.y };
-                            const se = { x: r.x + widthMm, y: r.y };
-                            for (const c of [nw, ne, sw, se]) ctx.fillRect(c.x - handleSize / 2, -c.y - handleSize / 2, handleSize, handleSize);
-                        }
                         ctx.restore();
                     }
                 }
@@ -239,8 +242,27 @@ export class CanvasView {
                 const entity = this.plotModel.getEntity(entityId);
                 if (entity) {
                     const zoom = this.plotModel.getZoom();
-                    this.drawEntity(entity, selectedLayerId === layer.id, zoom, ctx);
+                    // selection outline handled generically below
+                    this.drawEntity(entity, false, zoom, ctx);
                 }
+            }
+
+            // Generic selection outline and handles via layer bounds
+            if (selectedLayerId === layer.id && (this.plotModel as any).getLayerBounds) {
+                const b = (this.plotModel as any).getLayerBounds(layer) as { x: number; y: number; width: number; height: number };
+                ctx.save();
+                const zoomSel = this.plotModel.getZoom();
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 2 / zoomSel;
+                ctx.strokeRect(b.x, -(b.y + b.height), b.width, b.height);
+                const handleSize = 8 / zoomSel;
+                ctx.fillStyle = '#22c55e';
+                const nw = { x: b.x, y: b.y + b.height };
+                const ne = { x: b.x + b.width, y: b.y + b.height };
+                const sw = { x: b.x, y: b.y };
+                const se = { x: b.x + b.width, y: b.y };
+                for (const c of [nw, ne, sw, se]) ctx.fillRect(c.x - handleSize / 2, -c.y - handleSize / 2, handleSize, handleSize);
+                ctx.restore();
             }
         }
     }
@@ -321,10 +343,20 @@ export class CanvasView {
         ctx.scale(1, -1);
         const zoom = this.plotModel.getZoom();
         const dark = this.plotModel.isDarkMode ? this.plotModel.isDarkMode() : true;
+        const showDots = this.plotModel.isShowNodeDots ? this.plotModel.isShowNodeDots() : false;
         ctx.strokeStyle = dark ? '#ffffff' : '#000000';
         ctx.lineWidth = 1.5 / zoom;
         for (const path of paths) {
             if (!path.length) continue;
+            if (showDots) {
+                ctx.fillStyle = dark ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 0, 0, 1)';
+                for (let i = 0; i < path.length; i++) {
+                    const [px, py] = path[i];
+                    ctx.beginPath();
+                    ctx.arc(r.x + px * r.pixelSizeMm, r.y + py * r.pixelSizeMm, 3 / zoom, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+            }
             ctx.beginPath();
             const [x0, y0] = path[0];
             ctx.moveTo(r.x + x0 * r.pixelSizeMm, r.y + y0 * r.pixelSizeMm);

@@ -1,8 +1,7 @@
-import { Font } from "./Font.js";
 
 export class PathTools {
 
-    private static font = new Font();
+
 
     // Helper to create a simple Pikachu character for testing
     static createPikachuPath(cx: number, cy: number, size: number): [number, number][][] {

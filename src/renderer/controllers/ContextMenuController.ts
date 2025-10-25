@@ -12,8 +12,20 @@ export class ContextMenuController {
     }
 
     show(screenX: number, screenY: number, worldX: number, worldY: number): void {
-        const entity = this.getEntityAt(worldX, worldY);
-        const items: ContextMenuItem[] = entity
+        // Layer-based hit test: check raster bounds first (top-most), then entities
+        let hitLayerId: string | null = null;
+        const layers = (this.model as any).getLayers ? (this.model as any).getLayers() as any[] : [];
+        for (let i = layers.length - 1; i >= 0; i--) {
+            const layer = layers[i];
+            const b = (this.model as any).getLayerBounds ? (this.model as any).getLayerBounds(layer) : null;
+            if (!b) continue;
+            if (worldX >= b.x && worldX <= b.x + b.width && worldY >= b.y && worldY <= b.y + b.height) {
+                hitLayerId = layer.id;
+                break;
+            }
+        }
+
+        const items: ContextMenuItem[] = hitLayerId
             ? [
                 { id: 'rotate_cw', label: 'Rotate 90° CW' },
                 { id: 'rotate_ccw', label: 'Rotate 90° CCW' },
@@ -29,33 +41,47 @@ export class ContextMenuController {
                 { id: 'add_pikachu', label: 'Add Pikachu' },
             ];
 
-        this.view.show(items, screenX, screenY, (id) => this.onSelect(id, worldX, worldY, entity ?? null));
+        this.view.show(items, screenX, screenY, (id) => this.onSelect(id, worldX, worldY, hitLayerId));
     }
 
     hide(): void {
         this.view.hide();
     }
 
-    private onSelect(id: string, worldX: number, worldY: number, entity: PlotEntity | null): void {
-        if (entity) {
-            switch (id) {
-                case 'rotate_cw':
-                    this.rotateEntity(entity, 90);
-                    break;
-                case 'rotate_ccw':
-                    this.rotateEntity(entity, -90);
-                    break;
-                case 'flip_h':
-                    this.flipEntity(entity, 'h');
-                    break;
-                case 'flip_v':
-                    this.flipEntity(entity, 'v');
-                    break;
-                case 'delete':
-                    this.model.removeEntity(entity.id);
-                    break;
+    private onSelect(id: string, worldX: number, worldY: number, layerId: string | null): void {
+        if (layerId) {
+            if (layerId.startsWith('e:')) {
+                const entityId = layerId.slice(2);
+                const entity = this.model.getEntity(entityId);
+                if (!entity) return;
+                switch (id) {
+                    case 'rotate_cw':
+                        this.rotateEntity(entity, 90);
+                        break;
+                    case 'rotate_ccw':
+                        this.rotateEntity(entity, -90);
+                        break;
+                    case 'flip_h':
+                        this.flipEntity(entity, 'h');
+                        break;
+                    case 'flip_v':
+                        this.flipEntity(entity, 'v');
+                        break;
+                    case 'delete':
+                        this.model.removeEntity(entity.id);
+                        break;
+                }
+                return;
             }
-            return;
+            if (layerId.startsWith('r:')) {
+                const rasterId = layerId.slice(2);
+                if (id === 'delete') {
+                    this.model.removeRaster(rasterId);
+                    return;
+                }
+                // For rasters, transform operations omitted for now
+                return;
+            }
         }
 
         // Background actions
@@ -92,7 +118,7 @@ export class ContextMenuController {
     }
 
     private rotateEntity(entity: PlotEntity, angleDeg: number): void {
-        const bounds = this.getEntityBounds(entity);
+        const bounds = (this.model as any).getLayerBounds({ id: `e:${entity.id}`, kind: 'paths', x: 0, y: 0, paths: entity.paths });
         const cx = bounds.x + bounds.width / 2;
         const cy = bounds.y + bounds.height / 2;
         const rad = angleDeg * Math.PI / 180;
@@ -109,7 +135,7 @@ export class ContextMenuController {
     }
 
     private flipEntity(entity: PlotEntity, axis: 'h' | 'v'): void {
-        const bounds = this.getEntityBounds(entity);
+        const bounds = (this.model as any).getLayerBounds({ id: `e:${entity.id}`, kind: 'paths', x: 0, y: 0, paths: entity.paths });
         const cx = bounds.x + bounds.width / 2;
         const cy = bounds.y + bounds.height / 2;
         const newPaths = entity.paths.map(path => path.map(([x, y]) => {
@@ -120,30 +146,7 @@ export class ContextMenuController {
         this.model.updateEntity(entity.id, { paths: newPaths });
     }
 
-    private getEntityAt(xWorld: number, yWorld: number): PlotEntity | null {
-        const entities = this.model.getEntities();
-        for (let i = entities.length - 1; i >= 0; i--) {
-            const entity = entities[i];
-            const b = this.getEntityBounds(entity);
-            if (xWorld >= b.x && xWorld <= b.x + b.width && yWorld >= b.y && yWorld <= b.y + b.height) {
-                return entity;
-            }
-        }
-        return null;
-    }
-
-    private getEntityBounds(entity: PlotEntity): { x: number; y: number; width: number; height: number } {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        entity.paths.forEach((path) => {
-            path.forEach(([x, y]) => {
-                minX = Math.min(minX, x);
-                minY = Math.min(minY, y);
-                maxX = Math.max(maxX, x);
-                maxY = Math.max(maxY, y);
-            });
-        });
-        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-    }
+    // Entity helpers removed; layer-based bounds are provided by PlotModel
 }
 
 

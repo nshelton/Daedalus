@@ -119,9 +119,6 @@ export class FilterChainController {
                 rasterSize: { width: r.width, height: r.height },
                 dpi: undefined,
                 pixelSizeMm: r.pixelSizeMm,
-                onProgress: (p) => {
-                    // TODO: publish progress to model for UI display
-                },
             };
             const inputHash = this.hashStage(i, f, current.value);
             const cached = this.getCached(rasterId, i, inputHash);
@@ -172,9 +169,6 @@ export class FilterChainController {
                 rasterSize: { width: r.width, height: r.height },
                 dpi: undefined,
                 pixelSizeMm: r.pixelSizeMm,
-                onProgress: (p) => {
-                    // TODO: publish progress to model for UI display
-                },
             };
             const inputHash = this.hashStage(i, f, current.value);
             const cached = this.getCached(rasterId, i, inputHash);

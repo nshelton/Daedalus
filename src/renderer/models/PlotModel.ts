@@ -14,6 +14,8 @@ export interface Raster {
     // Filter chain state
     filters?: import('../../types').FilterInstance[];
     previewIndex?: number | null;
+    // Transient UI-only state for filter evaluation progress [0,1]; not persisted
+    filterProgress?: number | null;
 }
 
 // Unified layer abstraction (derived from legacy rasters/entities for now)

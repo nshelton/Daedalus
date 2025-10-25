@@ -5,7 +5,6 @@ export class LayerControlView {
     private rootElement: HTMLElement;
     private plotModel: PlotModel;
     private listContainer: HTMLDivElement;
-    private rastersListContainer: HTMLDivElement;
     private darkModeToggle!: HTMLInputElement;
     private nodeDotsToggle!: HTMLInputElement;
 
@@ -87,41 +86,23 @@ export class LayerControlView {
         renderControls.appendChild(dotsRow);
         panel.appendChild(renderControls);
 
-        // Entity list container
+        // Unified Layers list container
         const listHeader = document.createElement('div');
-        listHeader.textContent = 'Entities';
+        listHeader.textContent = 'Layers';
         listHeader.style.marginTop = '8px';
         listHeader.style.marginBottom = '6px';
         listHeader.style.fontWeight = '600';
         panel.appendChild(listHeader);
 
         this.listContainer = document.createElement('div');
-        this.listContainer.id = 'entity-list';
+        this.listContainer.id = 'layers-list';
         this.listContainer.style.display = 'flex';
         this.listContainer.style.flexDirection = 'column';
         this.listContainer.style.gap = '4px';
-        this.listContainer.style.maxHeight = '240px';
+        this.listContainer.style.maxHeight = '360px';
         this.listContainer.style.overflowY = 'auto';
         this.listContainer.style.paddingRight = '4px';
         panel.appendChild(this.listContainer);
-
-        // Rasters list container
-        const rastersHeader = document.createElement('div');
-        rastersHeader.textContent = 'Rasters';
-        rastersHeader.style.marginTop = '10px';
-        rastersHeader.style.marginBottom = '6px';
-        rastersHeader.style.fontWeight = '600';
-        panel.appendChild(rastersHeader);
-
-        this.rastersListContainer = document.createElement('div');
-        this.rastersListContainer.id = 'raster-list';
-        this.rastersListContainer.style.display = 'flex';
-        this.rastersListContainer.style.flexDirection = 'column';
-        this.rastersListContainer.style.gap = '4px';
-        this.rastersListContainer.style.maxHeight = '160px';
-        this.rastersListContainer.style.overflowY = 'auto';
-        this.rastersListContainer.style.paddingRight = '4px';
-        panel.appendChild(this.rastersListContainer);
 
         this.loadPlotBtn.addEventListener('click', this.onLoadPlotClick.bind(this));
 
@@ -182,21 +163,19 @@ export class LayerControlView {
         }
     }
 
-    private renderEntityList(): void {
+    private renderLayersList(): void {
         if (!this.listContainer) return;
-        // Clear existing
         this.listContainer.innerHTML = '';
-
-        const entities = this.plotModel.getEntities();
-        if (entities.length === 0) {
+        const layers = (this.plotModel as any).getLayers ? (this.plotModel as any).getLayers() as any[] : [];
+        const selected = (this.plotModel as any).getSelectedLayerId ? (this.plotModel as any).getSelectedLayerId() as string | null : null;
+        if (layers.length === 0) {
             const empty = document.createElement('div');
-            empty.textContent = 'No entities';
+            empty.textContent = 'No layers';
             empty.style.opacity = '0.8';
             this.listContainer.appendChild(empty);
             return;
         }
-
-        for (const entity of entities) {
+        for (const layer of layers) {
             const item = document.createElement('div');
             item.style.display = 'flex';
             item.style.alignItems = 'center';
@@ -204,7 +183,7 @@ export class LayerControlView {
             item.style.padding = '6px 8px';
             item.style.border = '1px solid #333';
             item.style.borderRadius = '6px';
-            item.style.background = 'rgba(0,0,0,0.15)';
+            item.style.background = selected === layer.id ? 'rgba(59,130,246,0.25)' : 'rgba(0,0,0,0.15)';
 
             const left = document.createElement('div');
             left.style.display = 'flex';
@@ -212,7 +191,7 @@ export class LayerControlView {
             left.style.minWidth = '0';
 
             const title = document.createElement('div');
-            title.textContent = entity.id;
+            title.textContent = layer.id;
             title.style.whiteSpace = 'nowrap';
             title.style.overflow = 'hidden';
             title.style.textOverflow = 'ellipsis';
@@ -220,9 +199,14 @@ export class LayerControlView {
             left.appendChild(title);
 
             const meta = document.createElement('div');
-            const numPaths = entity.paths.length;
-            const numPoints = entity.paths.reduce((acc, p) => acc + p.length, 0);
-            meta.textContent = `${numPaths} paths · ${numPoints} pts`;
+            if (layer.kind === 'paths') {
+                const numPaths = (layer.paths?.length ?? 0);
+                const numPoints = (layer.paths ?? []).reduce((acc: number, p: any[]) => acc + p.length, 0);
+                meta.textContent = `${numPaths} paths · ${numPoints} pts`;
+            } else {
+                const w = layer.width ?? 0, h = layer.height ?? 0, ps = layer.pixelSizeMm ?? 1;
+                meta.textContent = `${w}×${h} px · ${ps.toFixed(2)} mm/px`;
+            }
             meta.style.opacity = '0.8';
             meta.style.marginTop = '2px';
             left.appendChild(meta);
@@ -239,79 +223,16 @@ export class LayerControlView {
             delBtn.style.padding = '4px 6px';
             delBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.plotModel.removeEntity(entity.id);
+                if (layer.id.startsWith('e:')) this.plotModel.removeEntity(layer.id.slice(2));
+                else if (layer.id.startsWith('r:')) this.plotModel.removeRaster(layer.id.slice(2));
             });
             actions.appendChild(delBtn);
 
+            item.onclick = () => (this.plotModel as any).setSelectedLayerId?.(layer.id);
+
             item.appendChild(left);
             item.appendChild(actions);
-
             this.listContainer.appendChild(item);
-        }
-    }
-
-    private renderRastersList(): void {
-        if (!this.rastersListContainer) return;
-        this.rastersListContainer.innerHTML = '';
-
-        const rasters = this.plotModel.getRasters();
-        if (rasters.length === 0) {
-            const empty = document.createElement('div');
-            empty.textContent = 'No rasters';
-            empty.style.opacity = '0.8';
-            this.rastersListContainer.appendChild(empty);
-            return;
-        }
-
-        for (const r of rasters) {
-            const item = document.createElement('div');
-            item.style.display = 'flex';
-            item.style.alignItems = 'center';
-            item.style.justifyContent = 'space-between';
-            item.style.padding = '6px 8px';
-            item.style.border = '1px solid #333';
-            item.style.borderRadius = '6px';
-            item.style.background = 'rgba(0,0,0,0.15)';
-
-            const left = document.createElement('div');
-            left.style.display = 'flex';
-            left.style.flexDirection = 'column';
-            left.style.minWidth = '0';
-
-            const title = document.createElement('div');
-            title.textContent = r.id;
-            title.style.whiteSpace = 'nowrap';
-            title.style.overflow = 'hidden';
-            title.style.textOverflow = 'ellipsis';
-            title.style.maxWidth = '160px';
-            left.appendChild(title);
-
-            const meta = document.createElement('div');
-            meta.textContent = `${r.width}×${r.height} px · ${Number(r.pixelSizeMm).toFixed(2)} mm/px`;
-            meta.style.opacity = '0.8';
-            meta.style.marginTop = '2px';
-            left.appendChild(meta);
-
-            const actions = document.createElement('div');
-            const delBtn = document.createElement('button');
-            delBtn.textContent = 'x';
-            delBtn.title = 'Delete';
-            delBtn.style.border = 'none';
-            delBtn.style.background = 'transparent';
-            delBtn.style.color = '#f0f';
-            delBtn.style.cursor = 'pointer';
-            delBtn.style.fontSize = '14px';
-            delBtn.style.padding = '4px 6px';
-            delBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.plotModel.removeRaster(r.id);
-            });
-            actions.appendChild(delBtn);
-
-            item.appendChild(left);
-            item.appendChild(actions);
-
-            this.rastersListContainer.appendChild(item);
         }
     }
 
@@ -319,7 +240,6 @@ export class LayerControlView {
         // sync toggles
         if (this.darkModeToggle) this.darkModeToggle.checked = this.plotModel.isDarkMode ? this.plotModel.isDarkMode() : this.darkModeToggle.checked;
         if (this.nodeDotsToggle) this.nodeDotsToggle.checked = this.plotModel.isShowNodeDots ? this.plotModel.isShowNodeDots() : this.nodeDotsToggle.checked;
-        this.renderEntityList();
-        this.renderRastersList();
+        this.renderLayersList();
     }
 }
