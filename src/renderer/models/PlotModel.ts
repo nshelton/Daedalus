@@ -14,8 +14,6 @@ export interface Raster {
     // Filter chain state
     filters?: import('../../types').FilterInstance[];
     previewIndex?: number | null;
-    // Transient UI-only state for filter evaluation progress [0,1]; not persisted
-    filterProgress?: number | null;
 }
 
 // Unified layer abstraction (derived from legacy rasters/entities for now)
@@ -191,7 +189,7 @@ export class PlotModel {
 
     setZoom(zoom: number): void {
         this.viewportInitialized = true;
-        this.state.viewport.zoom = Math.max(0.1, Math.min(10, zoom));
+        this.state.viewport.zoom = Math.max(0.1, Math.min(100, zoom));
         this.notify();
     }
 
@@ -328,7 +326,7 @@ export class PlotModel {
                     previewIndex: (typeof r.previewIndex === 'number' ? r.previewIndex : null)
                 })) : [],
                 viewport: {
-                    zoom: Math.max(0.1, Math.min(10, Number(raw?.viewport?.zoom ?? 1))),
+                    zoom: Math.max(0.1, Math.min(100, Number(raw?.viewport?.zoom ?? 1))),
                     panX: Number(raw?.viewport?.panX ?? 0),
                     panY: Number(raw?.viewport?.panY ?? 0),
                 },

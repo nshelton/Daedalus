@@ -516,7 +516,7 @@ export class CanvasView {
 
         const delta = -e.deltaY * 0.001;
         const oldZoom = this.plotModel.getZoom();
-        const newZoom = Math.max(0.1, Math.min(10, oldZoom * (1 + delta)));
+        const newZoom = Math.max(0.1, Math.min(100, oldZoom * (1 + delta)));
         this.plotModel.setZoom(newZoom);
 
         // Zoom toward mouse position

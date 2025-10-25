@@ -13,6 +13,8 @@ import { ThresholdFilter } from './controllers/filters/ThresholdFilter.js';
 import { PosterizeFilter } from './controllers/filters/PosterizeFilter.js';
 import { VectorizeFilter } from './controllers/filters/VectorizeBlobFilter.js';
 import { LevelsFilter } from './controllers/filters/LevelsFilter.js';
+import { SimplifyPathsFilter } from './controllers/filters/SimplifyPaths.js';
+import { SmoothPathsFilter } from './controllers/filters/SmoothPathsFilter.js';
 import HistogramController from './controllers/HistogramController.js';
 
 // Model
@@ -28,6 +30,8 @@ filterRegistry.register(ThresholdFilter);
 filterRegistry.register(PosterizeFilter);
 filterRegistry.register(VectorizeFilter);
 filterRegistry.register(LevelsFilter);
+filterRegistry.register(SimplifyPathsFilter);
+filterRegistry.register(SmoothPathsFilter);
 
 const filterChainController = new FilterChainController(plotModel, filterRegistry);
 const histogramController = new HistogramController(plotModel, filterRegistry, filterChainController);

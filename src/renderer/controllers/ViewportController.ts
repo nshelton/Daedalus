@@ -9,7 +9,7 @@ export class ViewportController {
     private panX = 0;
     private panY = 0;
     private minZoom = 0.1;
-    private maxZoom = 10;
+    private maxZoom = 100;
 
     getState(): ViewportState {
         return { zoom: this.zoom, panX: this.panX, panY: this.panY };
