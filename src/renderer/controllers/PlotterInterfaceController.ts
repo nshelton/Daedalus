@@ -3,12 +3,13 @@ import { PlotterControlView } from "../views/PlotterControlView.js";
 import { planTrajectory, PlannerSettings } from "./MotionPlanner.js";
 import type { Vertex } from "../utils/geom.js";
 import { optimizePathOrder, mergePathsWithinTolerance } from "../utils/pathOpt.js";
+import FilterChainController from "./FilterChainController.js";
 
 export class PlotterInterfaceController {
     private isConnected = false;
     private selectedPort: string | null = null;
 
-    constructor(private plotModel: PlotModel) {
+    constructor(private plotModel: PlotModel, private filterChain?: FilterChainController) {
     }
 
     public async onPenUpClick(): Promise<void> {
@@ -32,6 +33,23 @@ export class PlotterInterfaceController {
         try {
             const entities = this.plotModel.getEntities();
             let paths = this.entitiesToPaths(entities);
+
+            // Include filter-chain path outputs from rasters (transformed to world mm)
+            const rasters = this.plotModel.getRasters();
+            if (this.filterChain) {
+                for (const r of rasters) {
+                    try {
+                        const chainPaths = await this.filterChain.evaluateToPaths(r.id);
+                        if (chainPaths && chainPaths.length) {
+                            // Map pixel coordinates to world mm and offset by raster position
+                            const mapped = chainPaths.map(p => p.map(([x, y]) => [r.x + x * r.pixelSizeMm, r.y + y * r.pixelSizeMm] as [number, number]));
+                            paths.push(...mapped);
+                        }
+                    } catch {
+                        // ignore chain errors for robustness
+                    }
+                }
+            }
             // Merge paths whose endpoints are within tolerance (in mm)
             const MERGE_TOL_MM = 0.2;
             paths = mergePathsWithinTolerance(paths, MERGE_TOL_MM);

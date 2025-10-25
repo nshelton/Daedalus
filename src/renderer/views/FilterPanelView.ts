@@ -12,6 +12,10 @@ export class FilterPanelView {
     private readonly histogram: HistogramController;
     private isInteracting: boolean = false;
     private pendingRender: boolean = false;
+    private addMenuOpen: boolean = false;
+    private addMenuEl: HTMLDivElement | null = null;
+    private addMenuAnchorEl: HTMLButtonElement | null = null;
+    private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
 
     constructor(container: HTMLElement, model: PlotModel, registry: FilterRegistry, chain: FilterChainController, histogram: HistogramController) {
         this.container = container;
@@ -38,7 +42,7 @@ export class FilterPanelView {
             root.style.color = '#eee';
             root.style.padding = '8px';
             root.style.borderRadius = '8px';
-            root.style.fontFamily = 'system-ui, sans-serif';
+            root.style.backgroundColor = 'rgba(0,0,0,0.5)';
             this.container.appendChild(root);
             // Track pointer interaction to avoid destroying DOM while dragging sliders
             root.addEventListener('pointerdown', () => { this.isInteracting = true; });
@@ -86,41 +90,46 @@ export class FilterPanelView {
         header.textContent = 'Filters';
         header.style.fontWeight = 'bold';
         header.style.marginBottom = '8px';
+
+        // Add (+) button to open filter menu
+        const addBtn = document.createElement('button');
+        addBtn.textContent = '+';
+        addBtn.title = 'Add filter';
+        addBtn.style.background = 'transparent';
+        addBtn.style.border = 'none';
+        addBtn.style.color = '#eee';
+        addBtn.style.fontSize = '18px';
+        addBtn.style.lineHeight = '1';
+        addBtn.style.padding = '2px 6px';
+        addBtn.style.float = 'right';
+        addBtn.style.cursor = 'pointer';
+        addBtn.style.marginBottom = '8px';
+        addBtn.style.borderRadius = '4px';
+        addBtn.onmouseenter = () => { addBtn.style.background = '#333'; };
+        addBtn.onmouseleave = () => { addBtn.style.background = 'transparent'; };
+        addBtn.onclick = (ev) => {
+            ev.stopPropagation();
+            if (this.addMenuOpen) {
+                this.closeAddMenu();
+            } else {
+                this.addMenuAnchorEl = addBtn;
+                this.openAddMenu(root, raster.id);
+            }
+        };
+        header.appendChild(addBtn);
         root.appendChild(header);
 
-        const addRow = document.createElement('div');
-        const select = document.createElement('select');
-        const byInput = this.registry.listByInput('raster');
-        const alsoBitmap = this.registry.listByInput('bitmap');
-        const all = [...byInput, ...alsoBitmap].filter(def => def.entityKind === 'bitmap');
-        // Avoid duplicate entries when a filter supports both 'raster' and 'bitmap'
-        const seen = new Set<string>();
-        const unique = all.filter(def => {
-            if (seen.has(def.id)) return false;
-            seen.add(def.id);
-            return true;
-        });
-        unique.forEach(def => {
-            const opt = document.createElement('option');
-            opt.value = def.id;
-            opt.textContent = def.label;
-            select.appendChild(opt);
-        });
-        const addBtn = document.createElement('button');
-        addBtn.textContent = 'Add';
-        addBtn.onclick = () => this.chain.addFilter(raster.id, select.value);
-        addRow.appendChild(select);
-        addRow.appendChild(addBtn);
-        addRow.style.display = 'flex';
-        addRow.style.gap = '6px';
-        addRow.style.marginBottom = '8px';
-        root.appendChild(addRow);
-
         const list = document.createElement('div');
-        (raster.filters ?? []).forEach((f, index) => {
-            list.appendChild(this.renderFilterItem(raster.id, f, index));
+        (raster.filters ?? []).forEach((f) => {
+            list.appendChild(this.renderFilterItem(raster.id, f));
         });
         root.appendChild(list);
+
+        // Re-open menu if render() re-ran while menu was open
+        if (this.addMenuOpen && !this.addMenuEl) {
+            this.addMenuAnchorEl = addBtn;
+            this.openAddMenu(root, raster.id);
+        }
     }
 
     private requestRender(): void {
@@ -131,10 +140,11 @@ export class FilterPanelView {
         this.render();
     }
 
-    private renderFilterItem(rasterId: string, inst: FilterInstance, index: number): HTMLElement {
+    private renderFilterItem(rasterId: string, inst: FilterInstance): HTMLElement {
         const def = this.registry.get(inst.defId);
         const row = document.createElement('div');
-        row.style.border = '1px solid #444';
+        const borderColor = def?.entityKind === 'bitmap' ? '#22c55e' : '#3b82f6';
+        row.style.border = `1px solid ${borderColor}`;
         row.style.borderRadius = '6px';
         row.style.padding = '6px';
         row.style.marginBottom = '6px';
@@ -152,13 +162,24 @@ export class FilterPanelView {
 
         const enable = document.createElement('input');
         enable.type = 'checkbox';
+        enable.style.width = '16px';
+        enable.style.height = '16px';
+        enable.style.accentColor = '#888';
         enable.checked = !!inst.enabled;
         enable.title = 'Enabled';
         enable.onchange = () => this.chain.setEnabled(rasterId, inst.instanceId, enable.checked);
         controls.appendChild(enable);
 
         const del = document.createElement('button');
-        del.textContent = '✖';
+        del.textContent = 'x';
+        del.style.width = '16px';
+        del.style.height = '16px';
+        del.style.accentColor = '#888';
+        del.style.display = 'flex';
+        del.style.alignItems = 'center';
+        del.style.justifyContent = 'center';
+        del.style.padding = '0';
+        del.style.lineHeight = '1';
         del.onclick = () => this.chain.removeFilter(rasterId, inst.instanceId);
         controls.appendChild(del);
 
@@ -185,24 +206,87 @@ export class FilterPanelView {
 
     private renderParams(rasterId: string, inst: FilterInstance, schema: FilterParamDef[]): HTMLElement {
         const wrap = document.createElement('div');
-        wrap.style.display = 'grid';
-        wrap.style.gridTemplateColumns = '1fr 1fr';
-        wrap.style.gap = '6px';
         for (const p of schema) {
-            const label = document.createElement('label');
-            label.textContent = p.label;
-            wrap.appendChild(label);
+
             let input: HTMLElement;
+
             if (p.type === 'number') {
+                // Render param label & value
+                const label = document.createElement('label');
+                // label.style.position = 'absolute';
+                // label.style.top = '-12px';
+                // label.style.left = '2px';
+                label.style.fontSize = '11px';
+                label.style.position = 'absolute';
+                label.textContent = p.label;
+
                 const el = document.createElement('input');
+                el.style.background = 'transparent';
+                el.style.appearance = 'none';
+                el.style.height = '1px';
+                el.style.borderRadius = '0';
+                el.style.backgroundColor = '#fff';
+                el.style.outline = 'none';
+                el.style.margin = ' 20px 0 0 0';
+                el.style.padding = '0';
+                el.style.position = 'relative';
+                el.style.flex = '1 1 auto';
+                el.style.accentColor = '#fff';
+                // Custom slider track and thumb for Chrome/Safari/Edge
+                el.style.setProperty('accent-color', '#fff');
+                el.addEventListener('input', () => el.style.setProperty('--val', el.value));
+
+                el.style.setProperty('--track-color', '#fff');
+                el.style.setProperty('--thumb-color', '#fff');
+                el.style.setProperty('--thumb-border', '1px solid #000');
+
+                el.oninput = () => display.textContent = el.value;
+
+                el.onchange = () => this.updateParam(rasterId, inst, p.key, parseFloat(el.value));
+
+                el.addEventListener('focus', () => el.style.outline = 'none');
+
+                // Inline styles for WebKit browsers
+                el.style.setProperty('box-shadow', 'none');
+                el.style.setProperty('background-image', 'none');
+
+                // Create raw CSS rules for slider
+                el.style.cursor = 'pointer';
+
+                el.addEventListener('mousedown', () => el.style.opacity = '0.85');
+                el.addEventListener('mouseup', () => el.style.opacity = '1');
+
+                // Dynamically inject slider track/thumb styles
+                el.onmousemove = () => { }; // force render for some browsers
+
+                el.style.width = '100%';
                 el.type = 'range';
                 el.min = String(p.min ?? 0);
                 el.max = String(p.max ?? 1);
                 el.step = String(p.step ?? 0.01);
                 const v = (inst.params as any)?.[p.key];
                 el.value = String(typeof v === 'number' ? v : p.min ?? 0);
-                el.oninput = () => this.updateParam(rasterId, inst, p.key, Number(el.value));
-                input = el;
+
+                // Value display
+                const display = document.createElement('span');
+                display.style.minWidth = '38px';
+                display.style.position = 'absolute';
+                display.style.right = '0';
+                display.style.fontSize = '11px';
+                display.style.opacity = '0.8';
+                display.textContent = el.value;
+
+                // put slider and value display in a horizontal layout
+                const sliderWrap = document.createElement('div');
+                sliderWrap.style.display = 'flex';
+                sliderWrap.style.alignItems = 'center';
+                sliderWrap.style.gap = '6px';
+                sliderWrap.style.marginTop = '10px';
+                sliderWrap.appendChild(label);
+                sliderWrap.appendChild(el);
+                sliderWrap.appendChild(display);
+
+                input = sliderWrap;
             } else if (p.type === 'boolean') {
                 const el = document.createElement('input');
                 el.type = 'checkbox';
@@ -221,7 +305,26 @@ export class FilterPanelView {
                 const v = (inst.params as any)?.[p.key];
                 if (v !== undefined) el.value = String(v);
                 el.onchange = () => this.updateParam(rasterId, inst, p.key, el.value);
-                input = el;
+
+                // Value display for select
+                const display = document.createElement('span');
+                display.style.fontSize = '11px';
+                display.style.opacity = '0.8';
+                display.textContent = el.options[el.selectedIndex]?.textContent || '';
+                el.onchange = () => {
+                    display.textContent = el.options[el.selectedIndex]?.textContent || '';
+                    this.updateParam(rasterId, inst, p.key, el.value);
+                };
+
+                // horizontal layout
+                const selectWrap = document.createElement('div');
+                selectWrap.style.display = 'flex';
+                selectWrap.style.alignItems = 'center';
+                selectWrap.style.gap = '6px';
+                selectWrap.appendChild(el);
+                selectWrap.appendChild(display);
+
+                input = selectWrap;
             }
             wrap.appendChild(input);
         }
@@ -247,6 +350,95 @@ export class FilterPanelView {
             const x = Math.floor(i * barW);
             const y = h - bh - 1;
             ctx.fillRect(x, y, Math.ceil(barW), bh);
+        }
+    }
+
+    private openAddMenu(root: HTMLElement, rasterId: string): void {
+        // Build unique list of filters that can take raster/bitmap/paths
+        const inRaster = this.registry.listByInput('raster');
+        const inBitmap = this.registry.listByInput('bitmap');
+        const inPaths = this.registry.listByInput('paths');
+        const all = [...inRaster, ...inBitmap, ...inPaths];
+        const seen = new Set<string>();
+        const unique = all.filter(def => {
+            if (seen.has(def.id)) return false;
+            seen.add(def.id);
+            return true;
+        });
+
+        const menu = document.createElement('div');
+        menu.style.position = 'absolute';
+        menu.style.background = '#111';
+        menu.style.border = '1px solid #444';
+
+        // Give raster filters a green outline, plot filters a blue outline in the menu buttons
+        // We'll style the buttons when we create them in the next lines.
+        menu.style.borderRadius = '6px';
+        menu.style.padding = '6px';
+        menu.style.display = 'grid';
+        menu.style.gap = '6px';
+        menu.style.maxHeight = '40vh';
+        menu.style.overflow = 'auto';
+        menu.style.zIndex = '1000';
+
+        // Position under the (+) button, relative to root
+        const parentRect = root.getBoundingClientRect();
+        const anchor = this.addMenuAnchorEl;
+        const anchorRect = anchor ? anchor.getBoundingClientRect() : null;
+        let top = anchorRect ? (anchorRect.bottom - parentRect.top + 4) : 28;
+        let left = anchorRect ? (anchorRect.left - parentRect.left) : 0;
+
+        unique.forEach(def => {
+            const btn = document.createElement('button');
+            btn.textContent = def.label;
+            btn.style.background = '#222';
+            btn.style.color = '#eee';
+            const borderColor = def.entityKind === 'bitmap' ? '#22c55e' : '#3b82f6';
+            btn.style.border = `1px solid ${borderColor}`;
+            btn.style.borderRadius = '4px';
+            btn.style.padding = '6px 8px';
+            btn.style.cursor = 'pointer';
+            btn.onmouseenter = () => { btn.style.background = '#2a2a2a'; };
+            btn.onmouseleave = () => { btn.style.background = '#222'; };
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                this.chain.addFilter(rasterId, def.id);
+                this.closeAddMenu();
+            };
+            menu.appendChild(btn);
+        });
+
+        root.appendChild(menu);
+
+        // Keep menu within root bounds after it's in the DOM (to know its size)
+        const maxLeft = Math.max(0, root.clientWidth - menu.offsetWidth - 4);
+        const maxTop = Math.max(0, root.clientHeight - menu.offsetHeight - 4);
+        if (left > maxLeft) left = maxLeft;
+        if (top > maxTop) top = maxTop;
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+        this.addMenuEl = menu;
+        this.addMenuOpen = true;
+
+        // Outside click to close
+        this.outsideClickHandler = (e: MouseEvent) => {
+            const target = e.target as Node;
+            if (this.addMenuEl && !this.addMenuEl.contains(target) && this.addMenuAnchorEl && !this.addMenuAnchorEl.contains(target)) {
+                this.closeAddMenu();
+            }
+        };
+        document.addEventListener('mousedown', this.outsideClickHandler, { capture: true });
+    }
+
+    private closeAddMenu(): void {
+        this.addMenuOpen = false;
+        if (this.addMenuEl && this.addMenuEl.parentElement) {
+            this.addMenuEl.parentElement.removeChild(this.addMenuEl);
+        }
+        this.addMenuEl = null;
+        if (this.outsideClickHandler) {
+            document.removeEventListener('mousedown', this.outsideClickHandler, { capture: true } as any);
+            this.outsideClickHandler = null;
         }
     }
 }

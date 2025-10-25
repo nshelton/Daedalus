@@ -35,11 +35,17 @@ interface SelectionState {
     resizeHandle: string | null;
 }
 
+interface RenderOptions {
+    darkMode: boolean;
+    showNodeDots: boolean;
+}
+
 interface PlotState {
     entities: PlotEntity[];
     rasters: Raster[];
     viewport: ViewportState;
     selection: SelectionState;
+    render: RenderOptions;
 }
 
 export class PlotModel {
@@ -62,6 +68,10 @@ export class PlotModel {
             dragStartX: 0,
             dragStartY: 0,
             resizeHandle: null
+        },
+        render: {
+            darkMode: true,
+            showNodeDots: true
         }
     };
 
@@ -285,7 +295,8 @@ export class PlotModel {
             entities: [...this.state.entities],
             rasters: [...this.state.rasters],
             viewport: { ...this.state.viewport },
-            selection: { ...this.state.selection }
+            selection: { ...this.state.selection },
+            render: { ...this.state.render }
         };
     }
 
@@ -309,6 +320,10 @@ export class PlotModel {
                 dragStartX: 0,
                 dragStartY: 0,
                 resizeHandle: null
+            },
+            render: {
+                darkMode: true,
+                showNodeDots: true
             }
         };
         this.notify();
@@ -353,6 +368,10 @@ export class PlotModel {
                     dragStartX: 0,
                     dragStartY: 0,
                     resizeHandle: null,
+                },
+                render: {
+                    darkMode: Boolean(raw?.render?.darkMode ?? true),
+                    showNodeDots: Boolean(raw?.render?.showNodeDots ?? true)
                 }
             };
             this.state = next;
@@ -360,6 +379,29 @@ export class PlotModel {
         } catch {
             // If anything goes wrong, keep current state
         }
+    }
+
+    // === Render Options ===
+    getRenderOptions(): Readonly<RenderOptions> {
+        return { ...this.state.render };
+    }
+
+    isDarkMode(): boolean {
+        return this.state.render.darkMode;
+    }
+
+    isShowNodeDots(): boolean {
+        return this.state.render.showNodeDots;
+    }
+
+    setDarkMode(value: boolean): void {
+        this.state.render.darkMode = Boolean(value);
+        this.notify();
+    }
+
+    setShowNodeDots(value: boolean): void {
+        this.state.render.showNodeDots = Boolean(value);
+        this.notify();
     }
 
     private deserializeTypedArray(input: any): Uint8ClampedArray {

@@ -6,6 +6,8 @@ export class LayerControlView {
     private plotModel: PlotModel;
     private listContainer: HTMLDivElement;
     private rastersListContainer: HTMLDivElement;
+    private darkModeToggle!: HTMLInputElement;
+    private nodeDotsToggle!: HTMLInputElement;
 
     //buttons
     private loadPlotBtn: HTMLButtonElement;
@@ -37,6 +39,53 @@ export class LayerControlView {
         const loadGroup = makeButtonGroup();
         loadGroup.appendChild(this.loadPlotBtn);
         panel.appendChild(loadGroup);
+
+        // Rendering controls
+        const renderHeader = document.createElement('div');
+        renderHeader.textContent = 'Rendering';
+        renderHeader.style.marginTop = '8px';
+        renderHeader.style.marginBottom = '6px';
+        renderHeader.style.fontWeight = '600';
+        panel.appendChild(renderHeader);
+
+        const renderControls = document.createElement('div');
+        renderControls.style.display = 'flex';
+        renderControls.style.flexDirection = 'column';
+        renderControls.style.gap = '6px';
+
+        // Dark mode toggle
+        const darkRow = document.createElement('label');
+        darkRow.style.display = 'flex';
+        darkRow.style.alignItems = 'center';
+        darkRow.style.gap = '8px';
+        const darkInput = document.createElement('input');
+        darkInput.type = 'checkbox';
+        darkInput.checked = this.plotModel.isDarkMode ? this.plotModel.isDarkMode() : true;
+        darkInput.addEventListener('change', () => this.plotModel.setDarkMode?.(darkInput.checked));
+        const darkText = document.createElement('span');
+        darkText.textContent = 'Dark mode';
+        darkRow.appendChild(darkInput);
+        darkRow.appendChild(darkText);
+        this.darkModeToggle = darkInput;
+
+        // Node dots toggle
+        const dotsRow = document.createElement('label');
+        dotsRow.style.display = 'flex';
+        dotsRow.style.alignItems = 'center';
+        dotsRow.style.gap = '8px';
+        const dotsInput = document.createElement('input');
+        dotsInput.type = 'checkbox';
+        dotsInput.checked = this.plotModel.isShowNodeDots ? this.plotModel.isShowNodeDots() : true;
+        dotsInput.addEventListener('change', () => this.plotModel.setShowNodeDots?.(dotsInput.checked));
+        const dotsText = document.createElement('span');
+        dotsText.textContent = 'Show node dots';
+        dotsRow.appendChild(dotsInput);
+        dotsRow.appendChild(dotsText);
+        this.nodeDotsToggle = dotsInput;
+
+        renderControls.appendChild(darkRow);
+        renderControls.appendChild(dotsRow);
+        panel.appendChild(renderControls);
 
         // Entity list container
         const listHeader = document.createElement('div');
@@ -267,6 +316,9 @@ export class LayerControlView {
     }
 
     private renderAll(): void {
+        // sync toggles
+        if (this.darkModeToggle) this.darkModeToggle.checked = this.plotModel.isDarkMode ? this.plotModel.isDarkMode() : this.darkModeToggle.checked;
+        if (this.nodeDotsToggle) this.nodeDotsToggle.checked = this.plotModel.isShowNodeDots ? this.plotModel.isShowNodeDots() : this.nodeDotsToggle.checked;
         this.renderEntityList();
         this.renderRastersList();
     }

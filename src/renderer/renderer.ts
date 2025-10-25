@@ -11,6 +11,8 @@ import FilterRegistry from './controllers/FilterRegistry.js';
 import FilterChainController from './controllers/FilterChainController.js';
 import { ThresholdFilter } from './controllers/filters/ThresholdFilter.js';
 import { PosterizeFilter } from './controllers/filters/PosterizeFilter.js';
+import { VectorizeFilter } from './controllers/filters/VectorizeBlobFilter.js';
+import { LevelsFilter } from './controllers/filters/LevelsFilter.js';
 import HistogramController from './controllers/HistogramController.js';
 
 // Model
@@ -24,6 +26,8 @@ const filterRegistry = new FilterRegistry();
 
 filterRegistry.register(ThresholdFilter);
 filterRegistry.register(PosterizeFilter);
+filterRegistry.register(VectorizeFilter);
+filterRegistry.register(LevelsFilter);
 
 const filterChainController = new FilterChainController(plotModel, filterRegistry);
 const histogramController = new HistogramController(plotModel, filterRegistry, filterChainController);

@@ -55,7 +55,8 @@ export class RasterUtils {
             rgba[j] = v;
             rgba[j + 1] = v;
             rgba[j + 2] = v;
-            rgba[j + 3] = 255;
+            // Treat pure white pixels as transparent (alpha 0)
+            rgba[j + 3] = (v === 255) ? 0 : 255;
         }
         return new ImageData(rgba, width, height);
     }

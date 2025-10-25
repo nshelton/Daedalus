@@ -13,7 +13,7 @@ export class CanvasView {
     private A3_WIDTH_MM = 297;
     private A3_HEIGHT_MM = 420;
 
-    private drawDots = false;
+    // Render flags now come from PlotModel.render
 
     private plotModel: PlotModel;
     private canvas = document.getElementById('plot-canvas') as HTMLCanvasElement;
@@ -85,8 +85,9 @@ export class CanvasView {
 
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Fill background
-        ctx.fillStyle = '#1a1a1a';
+        // Fill background (theme)
+        const dark = this.plotModel.isDarkMode ? this.plotModel.isDarkMode() : true;
+        ctx.fillStyle = dark ? '#0b0b0b' : '#ffffff';
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         const [panX, panY] = this.plotModel.getPan();
@@ -132,6 +133,7 @@ export class CanvasView {
     drawRasters(ctx: CanvasRenderingContext2D): void {
         const rasters = this.plotModel.getRasters();
         const selectedRasterId = this.plotModel.getSelectedRasterId?.() ? this.plotModel.getSelectedRasterId() : null;
+        const dark = this.plotModel.isDarkMode ? this.plotModel.isDarkMode() : true;
         for (const r of rasters) {
             // If previewing a bitmap stage via filter chain, draw that instead
             let bmp = this.rasterBitmapCache.get(r.id);
@@ -155,7 +157,7 @@ export class CanvasView {
                             for (let i = 0; i < d.length; i += 4) {
                                 const rr = d[i], gg = d[i + 1], bb = d[i + 2];
                                 const v = Math.round(0.299 * rr + 0.587 * gg + 0.114 * bb);
-                                d[i] = v; d[i + 1] = v; d[i + 2] = v; d[i + 3] = 255;
+                                d[i] = v; d[i + 1] = v; d[i + 2] = v; d[i + 3] = (v === 255) ? 0 : 255;
                             }
                             const cv = document.createElement('canvas');
                             cv.width = gray.width; cv.height = gray.height;
@@ -166,16 +168,51 @@ export class CanvasView {
                         })();
                     }
                 }).catch(() => { });
-                // If we have path preview, draw the paths and skip bitmap
+                // If we have path preview, draw the paths and also selection outline/handles
                 const p = this.rasterPathPreview.get(r.id);
                 if (p && p.length) {
                     this.drawPathsForRaster(ctx, r, p);
+
+                    // Draw selection outline for rasters even in path-preview mode
+                    if (selectedRasterId === r.id) {
+                        ctx.save();
+                        const zoomSel = this.plotModel.getZoom();
+                        const widthMmSel = r.width * r.pixelSizeMm;
+                        const heightMmSel = r.height * r.pixelSizeMm;
+                        ctx.strokeStyle = '#22c55e';
+                        ctx.lineWidth = 2 / zoomSel;
+                        ctx.strokeRect(r.x, -(r.y + heightMmSel), widthMmSel, heightMmSel);
+                        const handleSize = 8 / zoomSel;
+                        ctx.fillStyle = '#22c55e';
+                        const nw = { x: r.x, y: r.y + heightMmSel };
+                        const ne = { x: r.x + widthMmSel, y: r.y + heightMmSel };
+                        const sw = { x: r.x, y: r.y };
+                        const se = { x: r.x + widthMmSel, y: r.y };
+                        const corners = [nw, ne, sw, se];
+                        for (const c of corners) {
+                            ctx.fillRect(c.x - handleSize / 2, -c.y - handleSize / 2, handleSize, handleSize);
+                        }
+                        ctx.restore();
+                    }
                     continue;
                 }
                 const pbmp = this.rasterBitmapCache.get(r.id + ':preview');
                 if (pbmp) { bmp = pbmp; baseKey = r.id + ':preview'; }
             }
             if (!bmp) { this.ensureRasterBitmap(r.id); continue; }
+
+            // Dark-mode variant tinting (white ink)
+            if (dark) {
+                const darkKey = baseKey + ':dark';
+                const darkBmp = this.rasterBitmapCache.get(darkKey);
+                if (darkBmp) {
+                    bmp = darkBmp;
+                    baseKey = darkKey;
+                } else {
+                    // Build lazily
+                    this.ensureDarkTintedBitmap(baseKey);
+                }
+            }
             const widthMm = r.width * r.pixelSizeMm;
             const heightMm = r.height * r.pixelSizeMm;
             const zoom = this.plotModel.getZoom();
@@ -189,7 +226,7 @@ export class CanvasView {
                 if (mipBmp) {
                     bmp = mipBmp;
                 } else {
-                    if (baseKey.endsWith(':preview')) {
+                    if (baseKey.endsWith(':preview') || baseKey.endsWith(':dark')) {
                         this.ensureBitmapMipmap(baseKey, level);
                     } else {
                         this.ensureRasterMipmap(r.id, level);
@@ -242,7 +279,7 @@ export class CanvasView {
             // Ensure base bitmap exists for rasters
             if (!this.rasterBitmapCache.has(baseKey)) {
                 // If it refers to a raw raster id, try building it
-                if (!baseKey.endsWith(':preview')) {
+                if (!baseKey.endsWith(':preview') && !baseKey.endsWith(':dark')) {
                     await this.ensureRasterBitmap(baseKey);
                 } else {
                     // For preview, skip until it exists
@@ -269,11 +306,44 @@ export class CanvasView {
         }
     }
 
+    private async ensureDarkTintedBitmap(baseKey: string): Promise<void> {
+        const darkKey = baseKey + ':dark';
+        if (this.rasterBitmapCache.has(darkKey) || this.rasterBitmapLoading.has(darkKey)) return;
+        this.rasterBitmapLoading.add(darkKey);
+        try {
+            // Make sure base bitmap exists
+            if (!this.rasterBitmapCache.has(baseKey)) {
+                if (!baseKey.endsWith(':preview')) {
+                    await this.ensureRasterBitmap(baseKey);
+                } else {
+                    return;
+                }
+            }
+            const base = this.rasterBitmapCache.get(baseKey);
+            if (!base) return;
+            const cv = document.createElement('canvas');
+            cv.width = base.width; cv.height = base.height;
+            const c2 = cv.getContext('2d')!;
+            c2.clearRect(0, 0, cv.width, cv.height);
+            c2.drawImage(base, 0, 0);
+            c2.globalCompositeOperation = 'source-in';
+            c2.fillStyle = '#ffffff';
+            c2.fillRect(0, 0, cv.width, cv.height);
+            const tinted = await createImageBitmap(cv);
+            this.rasterBitmapCache.set(darkKey, tinted);
+        } catch {
+            // ignore
+        } finally {
+            this.rasterBitmapLoading.delete(darkKey);
+        }
+    }
+
     private drawPathsForRaster(ctx: CanvasRenderingContext2D, r: Raster, paths: PathLike[]): void {
         ctx.save();
         ctx.scale(1, -1);
         const zoom = this.plotModel.getZoom();
-        ctx.strokeStyle = '#000';
+        const dark = this.plotModel.isDarkMode ? this.plotModel.isDarkMode() : true;
+        ctx.strokeStyle = dark ? '#ffffff' : '#000000';
         ctx.lineWidth = 1.5 / zoom;
         for (const path of paths) {
             if (!path.length) continue;
@@ -290,8 +360,12 @@ export class CanvasView {
     }
 
     drawA3Paper(zoom: number, ctx: CanvasRenderingContext2D): void {
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = '#666';
+        const dark = this.plotModel.isDarkMode ? this.plotModel.isDarkMode() : true;
+        const paperFill = dark ? '#0f0f0f' : '#ffffff';
+        const paperStroke = dark ? '#444444' : '#666666';
+        const gridStroke = dark ? '#2a2a2a' : '#e0e0e0';
+        ctx.fillStyle = paperFill;
+        ctx.strokeStyle = paperStroke;
         ctx.lineWidth = 2 / zoom;
 
         // Paper origin at (0, 0) - bottom-left corner in plotter coordinates
@@ -306,7 +380,7 @@ export class CanvasView {
         ctx.strokeRect(x, y, this.A3_WIDTH_MM, this.A3_HEIGHT_MM);
 
         // Draw grid
-        ctx.strokeStyle = '#e0e0e0';
+        ctx.strokeStyle = gridStroke;
         ctx.lineWidth = 0.5 / zoom;
 
         const gridSize = 10; // 10mm grid
@@ -344,11 +418,13 @@ export class CanvasView {
         ctx.scale(1, -1);
 
         // Draw all paths in the entity
+        const showDots = this.plotModel.isShowNodeDots ? this.plotModel.isShowNodeDots() : false;
+        const dark = this.plotModel.isDarkMode ? this.plotModel.isDarkMode() : true;
         entity.paths.forEach(path => {
             if (path.length === 0) return;
 
-            if (this.drawDots) {
-                ctx.fillStyle = 'rgba(255, 0, 0, 1)';
+            if (showDots) {
+                ctx.fillStyle = dark ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 0, 0, 1)';
                 for (let i = 0; i < path.length; i++) {
                     ctx.beginPath();
 
@@ -366,7 +442,7 @@ export class CanvasView {
 
             // ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
             // ctx.fill();
-            ctx.strokeStyle = '#000000';
+            ctx.strokeStyle = dark ? '#ffffff' : '#000000';
             ctx.lineWidth = 1.5 / zoom;
             ctx.stroke();
 
@@ -504,9 +580,10 @@ export class CanvasView {
             this.plotModel.setSelectedEntityId(clickedEntity.id);
             this.plotModel.setDraggingEntity(true);
         } else {
-            // Left-click empty space: clear selection; do not pan (middle-click pans)
+            // Left-click empty space: clear selection and pan the viewport
             this.plotModel.setSelectedEntityId(null);
             if (this.plotModel.setSelectedRasterId) this.plotModel.setSelectedRasterId(null);
+            this.plotModel.setDraggingViewport(true);
         }
     }
 
@@ -572,6 +649,17 @@ export class CanvasView {
 
         // Update cursor
         this.updateCursor(worldX, worldY);
+
+        // Simple hover tooltip for raster/entity
+        const [panX, panY] = this.plotModel.getPan();
+        const zoom = this.plotModel.getZoom();
+        const rasterHover = this.getRasterAtScreenPosition(panX + worldX * zoom, panY - worldY * zoom);
+        if (rasterHover) {
+            this.canvas.title = `Raster: ${rasterHover.id}`;
+        } else {
+            const entityHover = this.getEntityAtPosition(worldX, worldY);
+            this.canvas.title = entityHover ? `Entity: ${entityHover.id}` : '';
+        }
     }
 
     handleMouseUp(): void {
