@@ -151,7 +151,7 @@ export class FilterChainController {
         const worldPaths: [number, number][][] = paths.map(p => p.map(([x, y]) => [r.x + x * r.pixelSizeMm, r.y + y * r.pixelSizeMm] as [number, number]));
         const id = this.generateId('plot');
         this.model.addEntity({ id, paths: worldPaths });
-        this.model.setSelectedEntityId(id);
+        (this.model as any).setSelectedLayerId?.(`e:${id}`);
         return id;
     }
 

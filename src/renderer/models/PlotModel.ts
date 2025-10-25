@@ -39,14 +39,10 @@ interface ViewportState {
 }
 
 interface SelectionState {
-    selectedEntityId: string | null;
-    selectedRasterId: string | null;
-    selectedLayerId?: string | null;
+    selectedLayerId: string | null;
     isDraggingViewport: boolean;
-    isDraggingEntity: boolean;
-    isDraggingRaster: boolean;
-    isResizingRaster: boolean;
-    isResizingEntity: boolean;
+    isDraggingSelected: boolean;
+    isResizingSelected: boolean;
     dragStartX: number;
     dragStartY: number;
     resizeHandle: string | null;
@@ -75,13 +71,10 @@ export class PlotModel {
             panY: 0
         },
         selection: {
-            selectedEntityId: null,
-            selectedRasterId: null,
+            selectedLayerId: null,
             isDraggingViewport: false,
-            isDraggingEntity: false,
-            isDraggingRaster: false,
-            isResizingRaster: false,
-            isResizingEntity: false,
+            isDraggingSelected: false,
+            isResizingSelected: false,
             dragStartX: 0,
             dragStartY: 0,
             resizeHandle: null
@@ -94,6 +87,8 @@ export class PlotModel {
 
     // Simple pub/sub for views to react to model changes
     private listeners: Set<() => void> = new Set();
+    // Runtime flag: not serialized; indicates whether viewport came from user/persisted state
+    private viewportInitialized: boolean = false;
 
     subscribe(listener: () => void): () => void {
         this.listeners.add(listener);
@@ -125,8 +120,8 @@ export class PlotModel {
 
     removeEntity(id: string): void {
         this.state.entities = this.state.entities.filter(e => e.id !== id);
-        if (this.state.selection.selectedEntityId === id) {
-            this.state.selection.selectedEntityId = null;
+        if (this.state.selection.selectedLayerId === `e:${id}`) {
+            this.state.selection.selectedLayerId = null;
         }
         this.notify();
     }
@@ -145,7 +140,9 @@ export class PlotModel {
 
     clearEntities(): void {
         this.state.entities = [];
-        this.state.selection.selectedEntityId = null;
+        if (this.state.selection.selectedLayerId?.startsWith('e:')) {
+            this.state.selection.selectedLayerId = null;
+        }
         this.notify();
     }
 
@@ -170,14 +167,17 @@ export class PlotModel {
 
     removeRaster(id: string): void {
         this.state.rasters = this.state.rasters.filter(r => r.id !== id);
-        if (this.state.selection.selectedRasterId === id) {
-            this.state.selection.selectedRasterId = null;
+        if (this.state.selection.selectedLayerId === `r:${id}`) {
+            this.state.selection.selectedLayerId = null;
         }
         this.notify();
     }
 
     clearRasters(): void {
         this.state.rasters = [];
+        if (this.state.selection.selectedLayerId?.startsWith('r:')) {
+            this.state.selection.selectedLayerId = null;
+        }
         this.notify();
     }
 
@@ -188,6 +188,7 @@ export class PlotModel {
     }
 
     setZoom(zoom: number): void {
+        this.viewportInitialized = true;
         this.state.viewport.zoom = Math.max(0.1, Math.min(10, zoom));
         this.notify();
     }
@@ -197,6 +198,7 @@ export class PlotModel {
     }
 
     setPan(panX: number, panY: number): void {
+        this.viewportInitialized = true;
         this.state.viewport.panX = panX;
         this.state.viewport.panY = panY;
         this.notify();
@@ -207,24 +209,6 @@ export class PlotModel {
     }
 
     // === Selection Management ===
-
-    getSelectedEntityId(): string | null {
-        return this.state.selection.selectedEntityId;
-    }
-
-    setSelectedEntityId(id: string | null): void {
-        this.state.selection.selectedEntityId = id;
-        if (id !== null) {
-            this.state.selection.selectedRasterId = null;
-        }
-        this.state.selection.selectedLayerId = id ? `e:${id}` : (this.state.selection.selectedRasterId ? `r:${this.state.selection.selectedRasterId}` : null);
-        this.notify();
-    }
-
-    getSelectedEntity(): PlotEntity | undefined {
-        if (!this.state.selection.selectedEntityId) return undefined;
-        return this.getEntity(this.state.selection.selectedEntityId);
-    }
 
     // === Drag State Management ===
 
@@ -237,31 +221,22 @@ export class PlotModel {
         return this.state.selection.isDraggingViewport;
     }
 
-    setDraggingEntity(isDragging: boolean): void {
-        this.state.selection.isDraggingEntity = isDragging;
+    isDraggingSelected(): boolean {
+        return this.state.selection.isDraggingSelected;
+    }
+
+    setDraggingSelected(isDragging: boolean): void {
+        this.state.selection.isDraggingSelected = isDragging;
         this.notify();
     }
 
-    isDraggingEntity(): boolean {
-        return this.state.selection.isDraggingEntity;
+    isResizingSelected(): boolean {
+        return this.state.selection.isResizingSelected;
     }
 
-    setResizingEntity(isResizing: boolean): void {
-        this.state.selection.isResizingEntity = isResizing;
+    setResizingSelected(isResizing: boolean): void {
+        this.state.selection.isResizingSelected = isResizing;
         this.notify();
-    }
-
-    isResizingEntity(): boolean {
-        return this.state.selection.isResizingEntity;
-    }
-
-    setResizingRaster(isResizing: boolean): void {
-        this.state.selection.isResizingRaster = isResizing;
-        this.notify();
-    }
-
-    isResizingRaster(): boolean {
-        return this.state.selection.isResizingRaster;
     }
 
     setDragStart(x: number, y: number): void {
@@ -283,44 +258,22 @@ export class PlotModel {
         return this.state.selection.resizeHandle;
     }
 
-    // === Raster Selection & Dragging ===
-
-    getSelectedRasterId(): string | null {
-        return this.state.selection.selectedRasterId;
-    }
-
-    setSelectedRasterId(id: string | null): void {
-        this.state.selection.selectedRasterId = id;
-        if (id !== null) {
-            this.state.selection.selectedEntityId = null;
-        }
-        this.state.selection.selectedLayerId = id ? `r:${id}` : (this.state.selection.selectedEntityId ? `e:${this.state.selection.selectedEntityId}` : null);
-        this.notify();
-    }
-
-    isDraggingRaster(): boolean {
-        return this.state.selection.isDraggingRaster;
-    }
-
-    setDraggingRaster(isDragging: boolean): void {
-        this.state.selection.isDraggingRaster = isDragging;
-        this.notify();
-    }
+    // === Selected Layer Id ===
 
     // === Complete State ===
 
     getState(): Readonly<PlotState> {
-        const selection = { ...this.state.selection };
-        if (!selection.selectedLayerId) {
-            selection.selectedLayerId = selection.selectedRasterId ? `r:${selection.selectedRasterId}` : (selection.selectedEntityId ? `e:${selection.selectedEntityId}` : null);
-        }
         return {
             entities: [...this.state.entities],
             rasters: [...this.state.rasters],
             viewport: { ...this.state.viewport },
-            selection,
+            selection: { ...this.state.selection },
             render: { ...this.state.render }
         };
+    }
+
+    isViewportInitialized(): boolean {
+        return this.viewportInitialized;
     }
 
     reset(): void {
@@ -333,13 +286,10 @@ export class PlotModel {
                 panY: 0
             },
             selection: {
-                selectedEntityId: null,
-                selectedRasterId: null,
+                selectedLayerId: null,
                 isDraggingViewport: false,
-                isDraggingEntity: false,
-                isDraggingRaster: false,
-                isResizingRaster: false,
-                isResizingEntity: false,
+                isDraggingSelected: false,
+                isResizingSelected: false,
                 dragStartX: 0,
                 dragStartY: 0,
                 resizeHandle: null
@@ -381,14 +331,10 @@ export class PlotModel {
                     panY: Number(raw?.viewport?.panY ?? 0),
                 },
                 selection: {
-                    selectedEntityId: raw?.selection?.selectedEntityId ?? null,
-                    selectedRasterId: raw?.selection?.selectedRasterId ?? null,
-                    selectedLayerId: raw?.selection?.selectedLayerId ?? (raw?.selection?.selectedRasterId ? `r:${raw?.selection?.selectedRasterId}` : (raw?.selection?.selectedEntityId ? `e:${raw?.selection?.selectedEntityId}` : null)),
+                    selectedLayerId: (typeof raw?.selection?.selectedLayerId === 'string') ? raw.selection.selectedLayerId : null,
                     isDraggingViewport: false,
-                    isDraggingEntity: false,
-                    isDraggingRaster: false,
-                    isResizingRaster: false,
-                    isResizingEntity: false,
+                    isDraggingSelected: false,
+                    isResizingSelected: false,
                     dragStartX: 0,
                     dragStartY: 0,
                     resizeHandle: null,
@@ -398,6 +344,8 @@ export class PlotModel {
                     showNodeDots: Boolean(raw?.render?.showNodeDots ?? true)
                 }
             };
+            // Loaded from persisted state; respect provided viewport
+            this.viewportInitialized = true;
             this.state = next;
             this.notify();
         } catch {
@@ -454,25 +402,11 @@ export class PlotModel {
     }
 
     getSelectedLayerId(): string | null {
-        const sel = this.state.selection;
-        if (sel.selectedLayerId != null) return sel.selectedLayerId;
-        if (sel.selectedRasterId) return `r:${sel.selectedRasterId}`;
-        if (sel.selectedEntityId) return `e:${sel.selectedEntityId}`;
-        return null;
+        return this.state.selection.selectedLayerId ?? null;
     }
 
     setSelectedLayerId(layerId: string | null): void {
         this.state.selection.selectedLayerId = layerId;
-        if (layerId == null) {
-            this.state.selection.selectedRasterId = null;
-            this.state.selection.selectedEntityId = null;
-        } else if (layerId.startsWith('r:')) {
-            this.state.selection.selectedRasterId = layerId.slice(2);
-            this.state.selection.selectedEntityId = null;
-        } else if (layerId.startsWith('e:')) {
-            this.state.selection.selectedEntityId = layerId.slice(2);
-            this.state.selection.selectedRasterId = null;
-        }
         this.notify();
     }
 

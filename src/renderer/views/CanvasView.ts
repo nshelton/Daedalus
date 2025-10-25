@@ -58,14 +58,16 @@ export class CanvasView {
         // Position viewport so (0,0) is bottom-left of A3 paper
         // Center the paper on screen with some padding
         const padding = 50;
-        const panX = padding;
-        const panY = this.canvas.height - padding;
-        const zoom = Math.min(
-            (this.canvas.width - padding * 2) / this.A3_WIDTH_MM,
-            (this.canvas.height - padding * 2) / this.A3_HEIGHT_MM
-        );
-        this.plotModel.setPan(panX, panY);
-        this.plotModel.setZoom(zoom);
+        if (!(this.plotModel as any).isViewportInitialized || !(this.plotModel as any).isViewportInitialized()) {
+            const panX = padding;
+            const panY = this.canvas.height - padding;
+            const zoom = Math.min(
+                (this.canvas.width - padding * 2) / this.A3_WIDTH_MM,
+                (this.canvas.height - padding * 2) / this.A3_HEIGHT_MM
+            );
+            this.plotModel.setPan(panX, panY);
+            this.plotModel.setZoom(zoom);
+        }
 
         // Start render loop
         requestAnimationFrame(() => this.render());
@@ -123,154 +125,11 @@ export class CanvasView {
         }
     }
 
-    drawRasters(ctx: CanvasRenderingContext2D): void {
-        const rasters = this.plotModel.getRasters();
-        const selectedRasterId = this.plotModel.getSelectedRasterId?.() ? this.plotModel.getSelectedRasterId() : null;
-        const dark = this.plotModel.isDarkMode ? this.plotModel.isDarkMode() : true;
-        for (const r of rasters) {
-            // If previewing a bitmap stage via filter chain, draw that instead
-            let bmp = this.rasterBitmapCache.get(r.id);
-            let baseKey = r.id;
-            if (this.filterChain) {
-                // async fetch preview but draw cached while waiting
-                this.filterChain.evaluatePreview(r.id).then(preview => {
-                    if (!preview) return;
-                    if (preview.kind === 'paths') {
-                        this.rasterPathPreview.set(r.id, preview.value as PathLike[]);
-                        // Clear any bitmap preview
-                        this.rasterBitmapCache.delete(r.id + ':preview');
-                    } else {
-                        this.rasterPathPreview.delete(r.id);
-                        // convert ImageData to ImageBitmap and cache under special key
-                        const imageData = preview.value as ImageData;
-                        (async () => {
-                            // Force grayscale
-                            const gray = new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
-                            const d = gray.data;
-                            for (let i = 0; i < d.length; i += 4) {
-                                const rr = d[i], gg = d[i + 1], bb = d[i + 2];
-                                const v = Math.round(0.299 * rr + 0.587 * gg + 0.114 * bb);
-                                d[i] = v; d[i + 1] = v; d[i + 2] = v; d[i + 3] = (v === 255) ? 0 : 255;
-                            }
-                            const cv = document.createElement('canvas');
-                            cv.width = gray.width; cv.height = gray.height;
-                            const c2 = cv.getContext('2d')!;
-                            c2.putImageData(gray, 0, 0);
-                            const b = await createImageBitmap(cv);
-                            this.rasterBitmapCache.set(r.id + ':preview', b);
-                        })();
-                    }
-                }).catch(() => { });
-                // If we have path preview, draw the paths and also selection outline/handles
-                const p = this.rasterPathPreview.get(r.id);
-                if (p && p.length) {
-                    this.drawPathsForRaster(ctx, r, p);
-
-                    // Draw selection outline for rasters even in path-preview mode
-                    if (selectedRasterId === r.id) {
-                        ctx.save();
-                        const zoomSel = this.plotModel.getZoom();
-                        const widthMmSel = r.width * r.pixelSizeMm;
-                        const heightMmSel = r.height * r.pixelSizeMm;
-                        ctx.strokeStyle = '#22c55e';
-                        ctx.lineWidth = 2 / zoomSel;
-                        ctx.strokeRect(r.x, -(r.y + heightMmSel), widthMmSel, heightMmSel);
-                        const handleSize = 8 / zoomSel;
-                        ctx.fillStyle = '#22c55e';
-                        const nw = { x: r.x, y: r.y + heightMmSel };
-                        const ne = { x: r.x + widthMmSel, y: r.y + heightMmSel };
-                        const sw = { x: r.x, y: r.y };
-                        const se = { x: r.x + widthMmSel, y: r.y };
-                        const corners = [nw, ne, sw, se];
-                        for (const c of corners) {
-                            ctx.fillRect(c.x - handleSize / 2, -c.y - handleSize / 2, handleSize, handleSize);
-                        }
-                        ctx.restore();
-                    }
-                    continue;
-                }
-                const pbmp = this.rasterBitmapCache.get(r.id + ':preview');
-                if (pbmp) { bmp = pbmp; baseKey = r.id + ':preview'; }
-            }
-            if (!bmp) { this.ensureRasterBitmap(r.id); continue; }
-
-            // Dark-mode variant tinting (white ink)
-            if (dark) {
-                const darkKey = baseKey + ':dark';
-                const darkBmp = this.rasterBitmapCache.get(darkKey);
-                if (darkBmp) {
-                    bmp = darkBmp;
-                    baseKey = darkKey;
-                } else {
-                    // Build lazily
-                    this.ensureDarkTintedBitmap(baseKey);
-                }
-            }
-            const widthMm = r.width * r.pixelSizeMm;
-            const heightMm = r.height * r.pixelSizeMm;
-            const zoom = this.plotModel.getZoom();
-            const screenPxPerSrcPx = r.pixelSizeMm * zoom; // <1 downscale, >1 upscale
-            // Choose mip level for strong downscale to reduce aliasing
-            let level = 0;
-            if (screenPxPerSrcPx < 0.5) {
-                level = Math.min(8, Math.max(1, Math.floor(Math.log2(1 / screenPxPerSrcPx))));
-                const mipKey = baseKey + '@' + level;
-                const mipBmp = this.rasterBitmapCache.get(mipKey);
-                if (mipBmp) {
-                    bmp = mipBmp;
-                } else {
-                    if (baseKey.endsWith(':preview') || baseKey.endsWith(':dark')) {
-                        this.ensureBitmapMipmap(baseKey, level);
-                    } else {
-                        this.ensureRasterMipmap(r.id, level);
-                    }
-                }
-            }
-
-            ctx.save();
-            // Flip Y to match world coordinates (0,0 bottom-left)
-            // ctx.scale(1, -1);
-            // Dynamic sampling: point when zooming in, smooth when zooming out
-            const smoothing = screenPxPerSrcPx < 1;
-            (ctx as any).imageSmoothingEnabled = smoothing;
-            if ('imageSmoothingQuality' in ctx) (ctx as any).imageSmoothingQuality = smoothing ? 'high' : 'low';
-            ctx.drawImage(bmp, r.x, -(r.y + heightMm), widthMm, heightMm);
-            // Selection outline for rasters
-            if (selectedRasterId === r.id) {
-                ctx.strokeStyle = '#22c55e';
-                ctx.lineWidth = 2 / this.plotModel.getZoom();
-                ctx.strokeRect(r.x, -(r.y + heightMm), widthMm, heightMm);
-
-                // Draw resize handles (nw, ne, sw, se) similar to entities
-                const handleSize = 8 / this.plotModel.getZoom();
-                ctx.fillStyle = '#22c55e';
-                // world corners
-                const nw = { x: r.x, y: r.y + heightMm };
-                const ne = { x: r.x + widthMm, y: r.y + heightMm };
-                const sw = { x: r.x, y: r.y };
-                const se = { x: r.x + widthMm, y: r.y };
-                const corners = [nw, ne, sw, se];
-                for (const c of corners) {
-                    const cx = c.x;
-                    const cyCanvas = -c.y;
-                    ctx.fillRect(cx - handleSize / 2, cyCanvas - handleSize / 2, handleSize, handleSize);
-                }
-            }
-            ctx.restore();
-        }
-    }
+    // drawRasters removed; rasters are rendered via drawLayers unified path
 
     private async drawLayers(ctx: CanvasRenderingContext2D): Promise<void> {
         const layers = (this.plotModel as any).getLayers ? (this.plotModel as any).getLayers() as any[] : null;
-        if (!layers) {
-            // Fallback to legacy rendering
-            this.drawRasters(ctx);
-            const entities = this.plotModel.getEntities();
-            const selectedEntityId = this.plotModel.getSelectedEntityId();
-            const zoom = this.plotModel.getZoom();
-            entities.forEach(entity => this.drawEntity(entity, entity.id === selectedEntityId, zoom, ctx));
-            return;
-        }
+        if (!layers) return; // layers API is required now
 
         // Render back-to-front as-is (entities appended after rasters in getLayers)
         const selectedLayerId = (this.plotModel as any).getSelectedLayerId ? (this.plotModel as any).getSelectedLayerId() as string | null : null;
@@ -655,30 +514,26 @@ export class CanvasView {
 
         this.plotModel.setDragStart(mouseX, mouseY);
 
-        // Check if clicking on resize handle
-        const selectedEntityId = this.plotModel.getSelectedEntityId();
-        if (selectedEntityId) {
-            const entity = this.plotModel.getEntity(selectedEntityId);
+        // Check if clicking on resize handle for selected layer
+        const selLayer = (this.plotModel as any).getSelectedLayerId ? (this.plotModel as any).getSelectedLayerId() as string | null : null;
+        if (selLayer?.startsWith('e:')) {
+            const entity = this.plotModel.getEntity(selLayer.slice(2));
             if (entity) {
                 const bounds = this.getEntityBounds(entity);
                 const handle = this.getHandleAtPosition(bounds, worldX, worldY);
                 if (handle) {
-                    this.plotModel.setResizingEntity(true);
+                    (this.plotModel as any).setResizingSelected?.(true);
                     this.plotModel.setResizeHandle(handle);
                     return;
                 }
             }
-        }
-
-        // Check raster resize handles if a raster is selected
-        const selectedRasterId = this.plotModel.getSelectedRasterId ? this.plotModel.getSelectedRasterId() : null;
-        if (selectedRasterId) {
-            const r = this.plotModel.getRasters().find(x => x.id === selectedRasterId);
+        } else if (selLayer?.startsWith('r:')) {
+            const r = this.plotModel.getRasters().find(x => x.id === selLayer.slice(2));
             if (r) {
                 const bounds = { x: r.x, y: r.y, width: r.width * r.pixelSizeMm, height: r.height * r.pixelSizeMm };
                 const handle = this.getHandleAtPosition(bounds, worldX, worldY);
                 if (handle) {
-                    this.plotModel.setResizingRaster?.(true);
+                    (this.plotModel as any).setResizingSelected?.(true);
                     this.plotModel.setResizeHandle(handle);
                     return;
                 }
@@ -688,23 +543,19 @@ export class CanvasView {
         // Check if clicking on raster first (above entities visually)
         const clickedRaster = this.getRasterAtScreenPosition(mouseX, mouseY);
         if (clickedRaster) {
-            this.plotModel.setSelectedRasterId(clickedRaster.id);
-            this.plotModel.setSelectedLayerId?.(`r:${clickedRaster.id}`);
-            this.plotModel.setDraggingRaster(true);
+            (this.plotModel as any).setSelectedLayerId?.(`r:${clickedRaster.id}`);
+            (this.plotModel as any).setDraggingSelected?.(true);
             return;
         }
 
         // Check if clicking on entity
         const clickedEntity = this.getEntityAtPosition(worldX, worldY);
         if (clickedEntity) {
-            this.plotModel.setSelectedEntityId(clickedEntity.id);
-            this.plotModel.setSelectedLayerId?.(`e:${clickedEntity.id}`);
-            this.plotModel.setDraggingEntity(true);
+            (this.plotModel as any).setSelectedLayerId?.(`e:${clickedEntity.id}`);
+            (this.plotModel as any).setDraggingSelected?.(true);
         } else {
             // Left-click empty space: clear selection and pan the viewport
-            this.plotModel.setSelectedEntityId(null);
-            if (this.plotModel.setSelectedRasterId) this.plotModel.setSelectedRasterId(null);
-            this.plotModel.setSelectedLayerId?.(null);
+            (this.plotModel as any).setSelectedLayerId?.(null);
             this.plotModel.setDraggingViewport(true);
         }
     }
@@ -720,51 +571,39 @@ export class CanvasView {
             const [dragStartX, dragStartY] = this.plotModel.getDragStart();
             this.plotModel.setPan(panX + mouseX - dragStartX, panY + mouseY - dragStartY);
             this.plotModel.setDragStart(mouseX, mouseY);
-        } else if (this.plotModel.isDraggingEntity()) {
-            const selectedEntityId = this.plotModel.getSelectedEntityId();
-            if (selectedEntityId) {
-                const entity = this.plotModel.getEntity(selectedEntityId);
+        } else if ((this.plotModel as any).isDraggingSelected && (this.plotModel as any).isDraggingSelected()) {
+            const selLayer = (this.plotModel as any).getSelectedLayerId ? (this.plotModel as any).getSelectedLayerId() as string | null : null;
+            const [dragStartX, dragStartY] = this.plotModel.getDragStart();
+            const zoom = this.plotModel.getZoom();
+            const dx = (mouseX - dragStartX) / zoom;
+            const dy = -(mouseY - dragStartY) / zoom;
+            if (selLayer?.startsWith('e:')) {
+                const eid = selLayer.slice(2);
+                const entity = this.plotModel.getEntity(eid);
                 if (entity) {
-                    const [dragStartX, dragStartY] = this.plotModel.getDragStart();
-                    const zoom = this.plotModel.getZoom();
-                    const dx = (mouseX - dragStartX) / zoom;
-                    const dy = -(mouseY - dragStartY) / zoom; // Flip Y to match coordinate system
                     this.translateEntity(entity, dx, dy);
-                    this.plotModel.updateEntity(selectedEntityId, entity);
+                    this.plotModel.updateEntity(eid, entity);
                     this.plotModel.setDragStart(mouseX, mouseY);
                 }
-            }
-        } else if (this.plotModel.isDraggingRaster && this.plotModel.isDraggingRaster()) {
-            const selectedRasterId = this.plotModel.getSelectedRasterId ? this.plotModel.getSelectedRasterId() : null;
-            if (selectedRasterId) {
-                const rasters = this.plotModel.getRasters();
-                const r = rasters.find(x => x.id === selectedRasterId);
+            } else if (selLayer?.startsWith('r:')) {
+                const rid = selLayer.slice(2);
+                const r = this.plotModel.getRasters().find(x => x.id === rid);
                 if (r) {
-                    const [dragStartX, dragStartY] = this.plotModel.getDragStart();
-                    const zoom = this.plotModel.getZoom();
-                    const dx = (mouseX - dragStartX) / zoom;
-                    const dy = -(mouseY - dragStartY) / zoom;
-                    this.plotModel.updateRaster(selectedRasterId, { x: r.x + dx, y: r.y + dy });
+                    this.plotModel.updateRaster(rid, { x: r.x + dx, y: r.y + dy });
                     this.plotModel.setDragStart(mouseX, mouseY);
                 }
             }
-        } else if (this.plotModel.isResizingRaster && this.plotModel.isResizingRaster()) {
-            const rId = this.plotModel.getSelectedRasterId ? this.plotModel.getSelectedRasterId() : null;
+        } else if ((this.plotModel as any).isResizingSelected && (this.plotModel as any).isResizingSelected()) {
+            const selLayer = (this.plotModel as any).getSelectedLayerId ? (this.plotModel as any).getSelectedLayerId() as string | null : null;
             const handle = this.plotModel.getResizeHandle();
-            if (rId && handle) {
-                const r = this.plotModel.getRasters().find(x => x.id === rId);
-                if (r) {
-                    this.scaleRaster(r, handle, worldX, worldY);
-                }
-            }
-        } else if (this.plotModel.isResizingEntity()) {
-            const selectedEntityId = this.plotModel.getSelectedEntityId();
-            const resizeHandle = this.plotModel.getResizeHandle();
-            if (selectedEntityId && resizeHandle) {
-                const entity = this.plotModel.getEntity(selectedEntityId);
+            if (handle && selLayer?.startsWith('r:')) {
+                const r = this.plotModel.getRasters().find(x => x.id === selLayer.slice(2));
+                if (r) this.scaleRaster(r, handle, worldX, worldY);
+            } else if (handle && selLayer?.startsWith('e:')) {
+                const entity = this.plotModel.getEntity(selLayer.slice(2));
                 if (entity) {
-                    this.scaleEntity(entity, resizeHandle, worldX, worldY);
-                    this.plotModel.updateEntity(selectedEntityId, entity);
+                    this.scaleEntity(entity, handle, worldX, worldY);
+                    this.plotModel.updateEntity(entity.id, entity);
                 }
             }
         }
@@ -786,10 +625,8 @@ export class CanvasView {
 
     handleMouseUp(): void {
         this.plotModel.setDraggingViewport(false);
-        this.plotModel.setDraggingEntity(false);
-        if (this.plotModel.setDraggingRaster) this.plotModel.setDraggingRaster(false);
-        if (this.plotModel.setResizingRaster) this.plotModel.setResizingRaster(false);
-        this.plotModel.setResizingEntity(false);
+        if ((this.plotModel as any).setDraggingSelected) (this.plotModel as any).setDraggingSelected(false);
+        if ((this.plotModel as any).setResizingSelected) (this.plotModel as any).setResizingSelected(false);
         this.plotModel.setResizeHandle(null);
     }
 
@@ -1007,7 +844,8 @@ export class CanvasView {
     }
 
     updateCursor(worldX: number, worldY: number): void {
-        const selectedEntityId = this.plotModel.getSelectedEntityId();
+        const selLayer = (this.plotModel as any).getSelectedLayerId ? (this.plotModel as any).getSelectedLayerId() as string | null : null;
+        const selectedEntityId = selLayer?.startsWith('e:') ? selLayer.slice(2) : null;
         if (selectedEntityId) {
             const entity = this.plotModel.getEntity(selectedEntityId);
             if (entity) {
@@ -1021,7 +859,7 @@ export class CanvasView {
         }
 
         // Raster cursor feedback: show resize cursor on handles, move inside raster
-        const selectedRasterId = this.plotModel.getSelectedRasterId ? this.plotModel.getSelectedRasterId() : null;
+        const selectedRasterId = selLayer?.startsWith('r:') ? selLayer.slice(2) : null;
         if (selectedRasterId) {
             const r = this.plotModel.getRasters().find(x => x.id === selectedRasterId);
             if (r) {

@@ -171,7 +171,7 @@ export const VectorizeFilter: FilterDefinition<Params, 'bitmap', 'paths'> = {
     defaultParams: { tolerance: 1, turdSize: 8 },
     paramsSchema: [
         { key: 'tolerance', label: 'Tolerance', type: 'number', min: 0, max: 10, step: 0.5 },
-        { key: 'turdSize', label: 'Min Area', type: 'number', min: 0, max: 10000, step: 1 }
+        { key: 'turdSize', label: 'Min Area', type: 'number', min: 0, max: 100, step: 1 }
     ],
     async apply(input, params, ctx) {
         const src = input as ImageData;

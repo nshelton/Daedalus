@@ -55,11 +55,10 @@ export class FilterPanelView {
         }
         root.innerHTML = '';
 
-        // Prefer unified layer selection; fall back to legacy raster selection
+        // Use unified layer selection only
         let selectedRasterId: string | null = null;
         const selLayerId = (this.model as any).getSelectedLayerId ? (this.model as any).getSelectedLayerId() as string | null : null;
         if (selLayerId && selLayerId.startsWith('r:')) selectedRasterId = selLayerId.slice(2);
-        if (!selectedRasterId && this.model.getSelectedRasterId) selectedRasterId = this.model.getSelectedRasterId();
 
         if (!selectedRasterId) {
             root.textContent = 'Select a raster to edit filters';

@@ -46,3 +46,6 @@ raster filters:
 
 raster->vector
  - 
+
+
+path simplifier filter!
