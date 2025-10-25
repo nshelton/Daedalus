@@ -40,6 +40,8 @@ export interface FilterContext {
 export interface FilterDefinition<P, In extends FilterIoKind, Out extends FilterIoKind> {
   id: string;
   label: string;
+  // High-level entity this filter operates on (e.g., only bitmaps for image-based filters)
+  entityKind: 'bitmap' | 'paths';
   inputKinds: In[];
   outputKind: Out;
   defaultParams: P;

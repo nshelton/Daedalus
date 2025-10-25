@@ -10,7 +10,8 @@ import { PersistenceController } from "./controllers/PersistenceController.js";
 import FilterRegistry from './controllers/FilterRegistry.js';
 import FilterChainController from './controllers/FilterChainController.js';
 import { ThresholdFilter } from './controllers/filters/ThresholdFilter.js';
-import { PosterizeFilter } from './controllers/filters/posterizeFilter.js';
+import { PosterizeFilter } from './controllers/filters/PosterizeFilter.js';
+import HistogramController from './controllers/HistogramController.js';
 
 // Model
 const plotModel = new PlotModel();
@@ -25,6 +26,7 @@ filterRegistry.register(ThresholdFilter);
 filterRegistry.register(PosterizeFilter);
 
 const filterChainController = new FilterChainController(plotModel, filterRegistry);
+const histogramController = new HistogramController(plotModel, filterRegistry, filterChainController);
 
 
 // Views
@@ -32,7 +34,7 @@ const canvasView = new CanvasView(plotModel, contextMenuController, filterRegist
 const serialView = new SerialView(document.body);
 new LayerControlView(document.body, plotModel);
 import FilterPanelView from './views/FilterPanelView.js';
-new FilterPanelView(document.body, plotModel, filterRegistry, filterChainController);
+new FilterPanelView(document.body, plotModel, filterRegistry, filterChainController, histogramController);
 new PlotterControlView(document.body, plotterInterfaceController);
 
 // Initialize the application

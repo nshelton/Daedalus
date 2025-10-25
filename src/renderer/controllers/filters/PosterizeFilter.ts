@@ -5,6 +5,7 @@ type Params = { levels: number };
 export const PosterizeFilter: FilterDefinition<Params, FilterIoKind, 'bitmap'> = {
     id: 'posterize',
     label: 'Posterize',
+    entityKind: 'bitmap',
     inputKinds: ['raster', 'bitmap'],
     outputKind: 'bitmap',
     defaultParams: { levels: 4 },

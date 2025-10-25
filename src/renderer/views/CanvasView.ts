@@ -52,8 +52,8 @@ export class CanvasView {
 
         // Hide placeholder, show canvas
         this.canvas.style.display = 'block';
-        // Prefer nearest-neighbor upscaling for rasters
-        (this.canvas.style as any).imageRendering = 'pixelated';
+        // Hint: crisp when zooming in; we'll still switch dynamically per draw
+        (this.canvas.style as any).imageRendering = 'auto';
 
         // Position viewport so (0,0) is bottom-left of A3 paper
         // Center the paper on screen with some padding
@@ -135,6 +135,7 @@ export class CanvasView {
         for (const r of rasters) {
             // If previewing a bitmap stage via filter chain, draw that instead
             let bmp = this.rasterBitmapCache.get(r.id);
+            let baseKey = r.id;
             if (this.filterChain) {
                 // async fetch preview but draw cached while waiting
                 this.filterChain.evaluatePreview(r.id).then(preview => {
@@ -148,10 +149,18 @@ export class CanvasView {
                         // convert ImageData to ImageBitmap and cache under special key
                         const imageData = preview.value as ImageData;
                         (async () => {
+                            // Force grayscale
+                            const gray = new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
+                            const d = gray.data;
+                            for (let i = 0; i < d.length; i += 4) {
+                                const rr = d[i], gg = d[i + 1], bb = d[i + 2];
+                                const v = Math.round(0.299 * rr + 0.587 * gg + 0.114 * bb);
+                                d[i] = v; d[i + 1] = v; d[i + 2] = v; d[i + 3] = 255;
+                            }
                             const cv = document.createElement('canvas');
-                            cv.width = imageData.width; cv.height = imageData.height;
+                            cv.width = gray.width; cv.height = gray.height;
                             const c2 = cv.getContext('2d')!;
-                            c2.putImageData(imageData, 0, 0);
+                            c2.putImageData(gray, 0, 0);
                             const b = await createImageBitmap(cv);
                             this.rasterBitmapCache.set(r.id + ':preview', b);
                         })();
@@ -164,18 +173,37 @@ export class CanvasView {
                     continue;
                 }
                 const pbmp = this.rasterBitmapCache.get(r.id + ':preview');
-                if (pbmp) bmp = pbmp;
+                if (pbmp) { bmp = pbmp; baseKey = r.id + ':preview'; }
             }
             if (!bmp) { this.ensureRasterBitmap(r.id); continue; }
             const widthMm = r.width * r.pixelSizeMm;
             const heightMm = r.height * r.pixelSizeMm;
+            const zoom = this.plotModel.getZoom();
+            const screenPxPerSrcPx = r.pixelSizeMm * zoom; // <1 downscale, >1 upscale
+            // Choose mip level for strong downscale to reduce aliasing
+            let level = 0;
+            if (screenPxPerSrcPx < 0.5) {
+                level = Math.min(8, Math.max(1, Math.floor(Math.log2(1 / screenPxPerSrcPx))));
+                const mipKey = baseKey + '@' + level;
+                const mipBmp = this.rasterBitmapCache.get(mipKey);
+                if (mipBmp) {
+                    bmp = mipBmp;
+                } else {
+                    if (baseKey.endsWith(':preview')) {
+                        this.ensureBitmapMipmap(baseKey, level);
+                    } else {
+                        this.ensureRasterMipmap(r.id, level);
+                    }
+                }
+            }
 
             ctx.save();
             // Flip Y to match world coordinates (0,0 bottom-left)
             // ctx.scale(1, -1);
-            // Disable smoothing so drawImage uses nearest-neighbor
-            (ctx as any).imageSmoothingEnabled = false;
-            if ('imageSmoothingQuality' in ctx) (ctx as any).imageSmoothingQuality = 'low';
+            // Dynamic sampling: point when zooming in, smooth when zooming out
+            const smoothing = screenPxPerSrcPx < 1;
+            (ctx as any).imageSmoothingEnabled = smoothing;
+            if ('imageSmoothingQuality' in ctx) (ctx as any).imageSmoothingQuality = smoothing ? 'high' : 'low';
             ctx.drawImage(bmp, r.x, -(r.y + heightMm), widthMm, heightMm);
             // Selection outline for rasters
             if (selectedRasterId === r.id) {
@@ -199,6 +227,45 @@ export class CanvasView {
                 }
             }
             ctx.restore();
+        }
+    }
+
+    private async ensureRasterMipmap(id: string, level: number): Promise<void> {
+        await this.ensureBitmapMipmap(id, level);
+    }
+
+    private async ensureBitmapMipmap(baseKey: string, level: number): Promise<void> {
+        const key = baseKey + '@' + level;
+        if (this.rasterBitmapCache.has(key) || this.rasterBitmapLoading.has(key)) return;
+        this.rasterBitmapLoading.add(key);
+        try {
+            // Ensure base bitmap exists for rasters
+            if (!this.rasterBitmapCache.has(baseKey)) {
+                // If it refers to a raw raster id, try building it
+                if (!baseKey.endsWith(':preview')) {
+                    await this.ensureRasterBitmap(baseKey);
+                } else {
+                    // For preview, skip until it exists
+                    return;
+                }
+            }
+            const base = this.rasterBitmapCache.get(baseKey);
+            if (!base) return;
+            const scale = Math.pow(0.5, level);
+            const targetW = Math.max(1, Math.floor(base.width * scale));
+            const targetH = Math.max(1, Math.floor(base.height * scale));
+            const cv = document.createElement('canvas');
+            cv.width = targetW; cv.height = targetH;
+            const c2 = cv.getContext('2d')!;
+            (c2 as any).imageSmoothingEnabled = true;
+            if ('imageSmoothingQuality' in c2) (c2 as any).imageSmoothingQuality = 'high';
+            c2.drawImage(base, 0, 0, targetW, targetH);
+            const mip = await createImageBitmap(cv);
+            this.rasterBitmapCache.set(key, mip);
+        } catch {
+            // ignore
+        } finally {
+            this.rasterBitmapLoading.delete(key);
         }
     }
 
@@ -383,6 +450,14 @@ export class CanvasView {
         const mouseY = e.clientY - rect.top;
         const [worldX, worldY] = this.screenToWorld(mouseX, mouseY);
 
+        // Middle-click pans the whole plot (viewport)
+        if (e.button === 1) {
+            e.preventDefault();
+            this.plotModel.setDragStart(mouseX, mouseY);
+            this.plotModel.setDraggingViewport(true);
+            return;
+        }
+
         this.plotModel.setDragStart(mouseX, mouseY);
 
         // Check if clicking on resize handle
@@ -429,9 +504,9 @@ export class CanvasView {
             this.plotModel.setSelectedEntityId(clickedEntity.id);
             this.plotModel.setDraggingEntity(true);
         } else {
+            // Left-click empty space: clear selection; do not pan (middle-click pans)
             this.plotModel.setSelectedEntityId(null);
             if (this.plotModel.setSelectedRasterId) this.plotModel.setSelectedRasterId(null);
-            this.plotModel.setDraggingViewport(true);
         }
     }
 
@@ -573,7 +648,9 @@ export class CanvasView {
             try {
                 const bitmap = await RasterUtils.imageBitmapFromFile(file);
                 const raster = RasterUtils.rasterFromImageBitmap(bitmap, { xMm: worldX, yMm: worldY, pixelSizeMm: 0.2 });
-                this.rasterBitmapCache.set(raster.id, bitmap);
+                // Cache grayscale bitmap derived from raster data, not the original colored bitmap
+                const grayBmp = await RasterUtils.rasterToImageBitmap(raster);
+                this.rasterBitmapCache.set(raster.id, grayBmp);
                 this.plotModel.addRaster(raster);
             } catch (err) {
                 console.error('Failed to import dropped image', err);
@@ -776,40 +853,60 @@ export class CanvasView {
         const oldWidthMm = raster.width * raster.pixelSizeMm;
         const oldHeightMm = raster.height * raster.pixelSizeMm;
         const minSize = 1;
-
-        // Opposite corner per handle in world coords
-        let ox = raster.x;
-        let oy = raster.y;
-        if (handle === 'sw') { ox = raster.x + oldWidthMm; oy = raster.y; }
-        else if (handle === 'ne') { ox = raster.x; oy = raster.y; }
-        else if (handle === 'nw') { ox = raster.x + oldWidthMm; oy = raster.y + oldHeightMm; }
-        // 'se' keeps opposite at bottom-left (default)
+        // Determine opposite corner and the dragged corner in world coords
+        // Raster bounds use bottom-left (x, y). Handle labels come from getResizeHandles()
+        // mapping: 'nw'->BL, 'ne'->BR, 'sw'->TL, 'se'->TR
+        let ox = raster.x; // opposite corner x
+        let oy = raster.y; // opposite corner y
+        let cx = raster.x; // dragged corner start x
+        let cy = raster.y; // dragged corner start y
+        switch (handle) {
+            case 'nw': // dragging bottom-left, opposite is top-right
+                cx = raster.x; cy = raster.y;
+                ox = raster.x + oldWidthMm; oy = raster.y + oldHeightMm;
+                break;
+            case 'ne': // dragging bottom-right, opposite is top-left
+                cx = raster.x + oldWidthMm; cy = raster.y;
+                ox = raster.x; oy = raster.y + oldHeightMm;
+                break;
+            case 'sw': // dragging top-left, opposite is bottom-right
+                cx = raster.x; cy = raster.y + oldHeightMm;
+                ox = raster.x + oldWidthMm; oy = raster.y;
+                break;
+            case 'se': // dragging top-right, opposite is bottom-left
+                cx = raster.x + oldWidthMm; cy = raster.y + oldHeightMm;
+                ox = raster.x; oy = raster.y;
+                break;
+        }
 
         const dist = (x0: number, y0: number, x1: number, y1: number) => Math.hypot(x1 - x0, y1 - y0);
         const d = dist(worldX, worldY, ox, oy);
-        const d0 = dist(raster.x + oldWidthMm, raster.y + oldHeightMm, raster.x, raster.y);
+        const d0 = dist(cx, cy, ox, oy);
         const scale = Math.max(minSize / Math.min(oldWidthMm, oldHeightMm), d0 === 0 ? 1 : d / d0);
 
         const newWidthMm = oldWidthMm * scale;
         const newHeightMm = oldHeightMm * scale;
         const newPixelSize = Math.max(0.01, raster.pixelSizeMm * scale);
 
-        // Adjust origin based on handle so opposite corner stays fixed
+        // Adjust origin so the opposite corner stays fixed
         let newX = raster.x;
         let newY = raster.y;
         switch (handle) {
-            case 'se':
-                // origin unchanged
-                break;
-            case 'sw':
-                newX = raster.x + oldWidthMm - newWidthMm;
-                break;
-            case 'ne':
-                newY = raster.y + oldHeightMm - newHeightMm;
-                break;
-            case 'nw':
+            case 'nw': // opposite TR fixed
                 newX = raster.x + oldWidthMm - newWidthMm;
                 newY = raster.y + oldHeightMm - newHeightMm;
+                break;
+            case 'ne': // opposite TL fixed
+                newX = raster.x;
+                newY = raster.y + oldHeightMm - newHeightMm;
+                break;
+            case 'sw': // opposite BR fixed
+                newX = raster.x + oldWidthMm - newWidthMm;
+                newY = raster.y;
+                break;
+            case 'se': // opposite BL fixed
+                newX = raster.x;
+                newY = raster.y;
                 break;
         }
 

@@ -2,19 +2,24 @@ import { PlotModel } from '../models/PlotModel.js';
 import type { FilterInstance, FilterParamDef } from '../../types';
 import FilterRegistry from '../controllers/FilterRegistry.js';
 import FilterChainController from '../controllers/FilterChainController.js';
+import HistogramController from '../controllers/HistogramController.js';
 
 export class FilterPanelView {
     private readonly container: HTMLElement;
     private readonly model: PlotModel;
     private readonly registry: FilterRegistry;
     private readonly chain: FilterChainController;
+    private readonly histogram: HistogramController;
+    private isInteracting: boolean = false;
+    private pendingRender: boolean = false;
 
-    constructor(container: HTMLElement, model: PlotModel, registry: FilterRegistry, chain: FilterChainController) {
+    constructor(container: HTMLElement, model: PlotModel, registry: FilterRegistry, chain: FilterChainController, histogram: HistogramController) {
         this.container = container;
         this.model = model;
         this.registry = registry;
         this.chain = chain;
-        this.model.subscribe(() => this.render());
+        this.histogram = histogram;
+        this.model.subscribe(() => this.requestRender());
         this.render();
     }
 
@@ -35,6 +40,14 @@ export class FilterPanelView {
             root.style.borderRadius = '8px';
             root.style.fontFamily = 'system-ui, sans-serif';
             this.container.appendChild(root);
+            // Track pointer interaction to avoid destroying DOM while dragging sliders
+            root.addEventListener('pointerdown', () => { this.isInteracting = true; });
+            const end = () => {
+                this.isInteracting = false;
+                if (this.pendingRender) { this.pendingRender = false; this.render(); }
+            };
+            root.addEventListener('pointerup', end);
+            root.addEventListener('pointercancel', end);
         }
         root.innerHTML = '';
 
@@ -46,6 +59,29 @@ export class FilterPanelView {
         const raster = this.model.getRasters().find(r => r.id === selectedRasterId);
         if (!raster) return;
 
+        // Histogram section
+        const histWrap = document.createElement('div');
+        histWrap.style.marginBottom = '8px';
+        const canvas = document.createElement('canvas');
+        canvas.width = 260; canvas.height = 60;
+        canvas.style.width = '260px';
+        canvas.style.height = '60px';
+        canvas.style.background = '#111';
+        canvas.style.border = '1px solid #444';
+        canvas.style.borderRadius = '4px';
+        histWrap.appendChild(canvas);
+        root.appendChild(histWrap);
+
+        // Draw histogram asynchronously, skipping while interacting
+        const selectedIdForHist = raster.id;
+        if (!this.isInteracting) {
+            this.histogram.getHistogram(selectedIdForHist).then(bins => {
+                if (!bins) return;
+                if (!canvas.isConnected) return;
+                this.drawHistogram(canvas, bins);
+            }).catch(() => { });
+        }
+
         const header = document.createElement('div');
         header.textContent = 'Filters';
         header.style.fontWeight = 'bold';
@@ -56,8 +92,15 @@ export class FilterPanelView {
         const select = document.createElement('select');
         const byInput = this.registry.listByInput('raster');
         const alsoBitmap = this.registry.listByInput('bitmap');
-        const all = [...byInput, ...alsoBitmap];
-        all.forEach(def => {
+        const all = [...byInput, ...alsoBitmap].filter(def => def.entityKind === 'bitmap');
+        // Avoid duplicate entries when a filter supports both 'raster' and 'bitmap'
+        const seen = new Set<string>();
+        const unique = all.filter(def => {
+            if (seen.has(def.id)) return false;
+            seen.add(def.id);
+            return true;
+        });
+        unique.forEach(def => {
             const opt = document.createElement('option');
             opt.value = def.id;
             opt.textContent = def.label;
@@ -78,6 +121,14 @@ export class FilterPanelView {
             list.appendChild(this.renderFilterItem(raster.id, f, index));
         });
         root.appendChild(list);
+    }
+
+    private requestRender(): void {
+        if (this.isInteracting) {
+            this.pendingRender = true;
+            return;
+        }
+        this.render();
     }
 
     private renderFilterItem(rasterId: string, inst: FilterInstance, index: number): HTMLElement {
@@ -180,6 +231,23 @@ export class FilterPanelView {
     private updateParam(rasterId: string, inst: FilterInstance, key: string, value: unknown): void {
         const next = { ...(inst.params as any), [key]: value };
         this.chain.setParams(rasterId, inst.instanceId, next);
+    }
+
+    private drawHistogram(canvas: HTMLCanvasElement, bins: Uint32Array): void {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const w = canvas.width, h = canvas.height;
+        const max = Math.max(1, bins.reduce((m, v) => v > m ? v : m, 0));
+        const barW = w / 256;
+        ctx.fillStyle = '#fff';
+        for (let i = 0; i < 256; i++) {
+            const v = bins[i];
+            const bh = Math.max(1, Math.round((v / max) * (h - 2)));
+            const x = Math.floor(i * barW);
+            const y = h - bh - 1;
+            ctx.fillRect(x, y, Math.ceil(barW), bh);
+        }
     }
 }
 

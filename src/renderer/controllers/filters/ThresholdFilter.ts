@@ -5,6 +5,7 @@ type Params = { threshold: number };
 export const ThresholdFilter: FilterDefinition<Params, FilterIoKind, 'bitmap'> = {
     id: 'threshold',
     label: 'Threshold',
+    entityKind: 'bitmap',
     inputKinds: ['raster', 'bitmap'],
     outputKind: 'bitmap',
     defaultParams: { threshold: 0.5 },
