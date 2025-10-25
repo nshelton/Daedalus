@@ -11,6 +11,9 @@ export interface Raster {
     x: number; // world mm, bottom-left origin
     y: number; // world mm
     pixelSizeMm: number; // mm per pixel
+    // Filter chain state
+    filters?: import('../../types').FilterInstance[];
+    previewIndex?: number | null;
 }
 
 interface ViewportState {
@@ -324,6 +327,15 @@ export class PlotModel {
                     x: Number(r.x) || 0,
                     y: Number(r.y) || 0,
                     pixelSizeMm: Number(r.pixelSizeMm) || 1,
+                    filters: Array.isArray(r.filters) ? r.filters.map((f: any) => ({
+                        instanceId: String(f.instanceId ?? ''),
+                        defId: String(f.defId ?? ''),
+                        enabled: Boolean(f.enabled ?? true),
+                        visible: Boolean(f.visible ?? false),
+                        params: f.params ?? {},
+                        io: { input: (f.io?.input ?? 'raster'), output: (f.io?.output ?? 'bitmap') }
+                    })) : [],
+                    previewIndex: (typeof r.previewIndex === 'number' ? r.previewIndex : null)
                 })) : [],
                 viewport: {
                     zoom: Math.max(0.1, Math.min(10, Number(raw?.viewport?.zoom ?? 1))),

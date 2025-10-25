@@ -2,7 +2,7 @@ export interface VectorizeOptions {
     threshold: number; // 0-255
 }
 
-import { PlotModel, Raster, PlotEntity } from "../models/PlotModel.js";
+import { PlotModel, PlotEntity } from "../models/PlotModel.js";
 
 export class RasterController {
     private plotModel: PlotModel;

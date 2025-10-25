@@ -3,6 +3,9 @@ import type { PlotEntity, Raster } from "../models/PlotModel.js";
 import { RasterUtils } from "../RasterUtils.js";
 import { PathTools } from "../PathTools.js";
 import { ContextMenuController } from "../controllers/ContextMenuController.js";
+import FilterRegistry from '../controllers/FilterRegistry.js';
+import FilterChainController from '../controllers/FilterChainController.js';
+import type { PathLike } from '../../types';
 
 export class CanvasView {
 
@@ -17,10 +20,15 @@ export class CanvasView {
     private contextMenuController: ContextMenuController;
     private rasterBitmapCache: Map<string, ImageBitmap> = new Map();
     private rasterBitmapLoading: Set<string> = new Set();
+    private filterRegistry?: FilterRegistry;
+    private filterChain?: FilterChainController;
+    private rasterPathPreview: Map<string, PathLike[]> = new Map();
 
-    constructor(plotModel: PlotModel, contextMenuController: ContextMenuController) {
+    constructor(plotModel: PlotModel, contextMenuController: ContextMenuController, filterRegistry?: FilterRegistry, filterChain?: FilterChainController) {
         this.plotModel = plotModel;
         this.contextMenuController = contextMenuController;
+        this.filterRegistry = filterRegistry;
+        this.filterChain = filterChain;
     }
 
     setupEventListeners(): void {
@@ -91,7 +99,7 @@ export class CanvasView {
         // Draw A3 paper
         this.drawA3Paper(zoom, ctx);
 
-        // Draw rasters first
+        // Draw rasters first (with filter preview if available)
         this.drawRasters(ctx);
 
         // Draw entities
@@ -125,12 +133,40 @@ export class CanvasView {
         const rasters = this.plotModel.getRasters();
         const selectedRasterId = this.plotModel.getSelectedRasterId?.() ? this.plotModel.getSelectedRasterId() : null;
         for (const r of rasters) {
-            const bmp = this.rasterBitmapCache.get(r.id);
-            if (!bmp) {
-                // Fire and forget; it will render on next frames
-                this.ensureRasterBitmap(r.id);
-                continue;
+            // If previewing a bitmap stage via filter chain, draw that instead
+            let bmp = this.rasterBitmapCache.get(r.id);
+            if (this.filterChain) {
+                // async fetch preview but draw cached while waiting
+                this.filterChain.evaluatePreview(r.id).then(preview => {
+                    if (!preview) return;
+                    if (preview.kind === 'paths') {
+                        this.rasterPathPreview.set(r.id, preview.value as PathLike[]);
+                        // Clear any bitmap preview
+                        this.rasterBitmapCache.delete(r.id + ':preview');
+                    } else {
+                        this.rasterPathPreview.delete(r.id);
+                        // convert ImageData to ImageBitmap and cache under special key
+                        const imageData = preview.value as ImageData;
+                        (async () => {
+                            const cv = document.createElement('canvas');
+                            cv.width = imageData.width; cv.height = imageData.height;
+                            const c2 = cv.getContext('2d')!;
+                            c2.putImageData(imageData, 0, 0);
+                            const b = await createImageBitmap(cv);
+                            this.rasterBitmapCache.set(r.id + ':preview', b);
+                        })();
+                    }
+                }).catch(() => { });
+                // If we have path preview, draw the paths and skip bitmap
+                const p = this.rasterPathPreview.get(r.id);
+                if (p && p.length) {
+                    this.drawPathsForRaster(ctx, r, p);
+                    continue;
+                }
+                const pbmp = this.rasterBitmapCache.get(r.id + ':preview');
+                if (pbmp) bmp = pbmp;
             }
+            if (!bmp) { this.ensureRasterBitmap(r.id); continue; }
             const widthMm = r.width * r.pixelSizeMm;
             const heightMm = r.height * r.pixelSizeMm;
 
@@ -164,6 +200,26 @@ export class CanvasView {
             }
             ctx.restore();
         }
+    }
+
+    private drawPathsForRaster(ctx: CanvasRenderingContext2D, r: Raster, paths: PathLike[]): void {
+        ctx.save();
+        ctx.scale(1, -1);
+        const zoom = this.plotModel.getZoom();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5 / zoom;
+        for (const path of paths) {
+            if (!path.length) continue;
+            ctx.beginPath();
+            const [x0, y0] = path[0];
+            ctx.moveTo(r.x + x0 * r.pixelSizeMm, r.y + y0 * r.pixelSizeMm);
+            for (let i = 1; i < path.length; i++) {
+                const [px, py] = path[i];
+                ctx.lineTo(r.x + px * r.pixelSizeMm, r.y + py * r.pixelSizeMm);
+            }
+            ctx.stroke();
+        }
+        ctx.restore();
     }
 
     drawA3Paper(zoom: number, ctx: CanvasRenderingContext2D): void {

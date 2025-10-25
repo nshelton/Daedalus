@@ -7,19 +7,32 @@ import { PlotterControlView } from "./views/PlotterControlView.js";
 import { PlotterInterfaceController } from "./controllers/PlotterInterfaceController.js";
 import { LayerControlView } from "./views/LayerControlView.js";
 import { PersistenceController } from "./controllers/PersistenceController.js";
-// Model 
+import FilterRegistry from './controllers/FilterRegistry.js';
+import FilterChainController from './controllers/FilterChainController.js';
+import { ThresholdFilter } from './controllers/filters/ThresholdFilter.js';
+import { PosterizeFilter } from './controllers/filters/posterizeFilter.js';
+
+// Model
 const plotModel = new PlotModel();
 const persistence = new PersistenceController({ plot: plotModel });
 
 // Controllers
 const contextMenuController = new ContextMenuController(plotModel, new ContextMenuView());
 const plotterInterfaceController = new PlotterInterfaceController(plotModel);
+const filterRegistry = new FilterRegistry();
+
+filterRegistry.register(ThresholdFilter);
+filterRegistry.register(PosterizeFilter);
+
+const filterChainController = new FilterChainController(plotModel, filterRegistry);
 
 
 // Views
-const canvasView = new CanvasView(plotModel, contextMenuController);
+const canvasView = new CanvasView(plotModel, contextMenuController, filterRegistry, filterChainController);
 const serialView = new SerialView(document.body);
 new LayerControlView(document.body, plotModel);
+import FilterPanelView from './views/FilterPanelView.js';
+new FilterPanelView(document.body, plotModel, filterRegistry, filterChainController);
 new PlotterControlView(document.body, plotterInterfaceController);
 
 // Initialize the application

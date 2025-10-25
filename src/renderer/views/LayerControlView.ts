@@ -157,25 +157,45 @@ export class LayerControlView {
             item.style.borderRadius = '6px';
             item.style.background = 'rgba(0,0,0,0.15)';
 
+            const left = document.createElement('div');
+            left.style.display = 'flex';
+            left.style.flexDirection = 'column';
+            left.style.minWidth = '0';
+
             const title = document.createElement('div');
             title.textContent = entity.id;
             title.style.whiteSpace = 'nowrap';
             title.style.overflow = 'hidden';
             title.style.textOverflow = 'ellipsis';
-            title.style.maxWidth = '140px';
-            item.appendChild(title);
+            title.style.maxWidth = '160px';
+            left.appendChild(title);
 
             const meta = document.createElement('div');
             const numPaths = entity.paths.length;
             const numPoints = entity.paths.reduce((acc, p) => acc + p.length, 0);
-            const min_x = Math.round(Math.min(...entity.paths.flat().map(p => p[0])));
-            const max_x = Math.round(Math.max(...entity.paths.flat().map(p => p[0])));
-            const min_y = Math.round(Math.min(...entity.paths.flat().map(p => p[1])));
-            const max_y = Math.round(Math.max(...entity.paths.flat().map(p => p[1])));
-            meta.textContent = `${numPaths} paths · ${numPoints} pts (${min_x}, ${min_y})-(${max_x}, ${max_y})`;
+            meta.textContent = `${numPaths} paths · ${numPoints} pts`;
             meta.style.opacity = '0.8';
-            meta.style.marginLeft = '8px';
-            item.appendChild(meta);
+            meta.style.marginTop = '2px';
+            left.appendChild(meta);
+
+            const actions = document.createElement('div');
+            const delBtn = document.createElement('button');
+            delBtn.textContent = 'x';
+            delBtn.title = 'Delete';
+            delBtn.style.border = 'none';
+            delBtn.style.background = 'transparent';
+            delBtn.style.color = '#f0f';
+            delBtn.style.cursor = 'pointer';
+            delBtn.style.fontSize = '14px';
+            delBtn.style.padding = '4px 6px';
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.plotModel.removeEntity(entity.id);
+            });
+            actions.appendChild(delBtn);
+
+            item.appendChild(left);
+            item.appendChild(actions);
 
             this.listContainer.appendChild(item);
         }
@@ -204,20 +224,43 @@ export class LayerControlView {
             item.style.borderRadius = '6px';
             item.style.background = 'rgba(0,0,0,0.15)';
 
+            const left = document.createElement('div');
+            left.style.display = 'flex';
+            left.style.flexDirection = 'column';
+            left.style.minWidth = '0';
+
             const title = document.createElement('div');
             title.textContent = r.id;
             title.style.whiteSpace = 'nowrap';
             title.style.overflow = 'hidden';
             title.style.textOverflow = 'ellipsis';
-            title.style.maxWidth = '140px';
-            item.appendChild(title);
+            title.style.maxWidth = '160px';
+            left.appendChild(title);
 
             const meta = document.createElement('div');
-
-            meta.textContent = `${r.width}×${r.height} px · ${Number(r.pixelSizeMm).toFixed(2)} mm/px (${Math.round(r.x)}, ${Math.round(r.y)})`;
+            meta.textContent = `${r.width}×${r.height} px · ${Number(r.pixelSizeMm).toFixed(2)} mm/px`;
             meta.style.opacity = '0.8';
-            meta.style.marginLeft = '8px';
-            item.appendChild(meta);
+            meta.style.marginTop = '2px';
+            left.appendChild(meta);
+
+            const actions = document.createElement('div');
+            const delBtn = document.createElement('button');
+            delBtn.textContent = 'x';
+            delBtn.title = 'Delete';
+            delBtn.style.border = 'none';
+            delBtn.style.background = 'transparent';
+            delBtn.style.color = '#f0f';
+            delBtn.style.cursor = 'pointer';
+            delBtn.style.fontSize = '14px';
+            delBtn.style.padding = '4px 6px';
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.plotModel.removeRaster(r.id);
+            });
+            actions.appendChild(delBtn);
+
+            item.appendChild(left);
+            item.appendChild(actions);
 
             this.rastersListContainer.appendChild(item);
         }
