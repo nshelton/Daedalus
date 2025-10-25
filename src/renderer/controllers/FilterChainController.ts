@@ -115,7 +115,14 @@ export class FilterChainController {
             const def = this.registry.get(f.defId);
             if (!def) return null;
             if (!def.inputKinds.includes(current.kind as any)) return null;
-            const ctx: FilterContext = { rasterSize: { width: r.width, height: r.height }, dpi: undefined, pixelSizeMm: r.pixelSizeMm };
+            const ctx: FilterContext = {
+                rasterSize: { width: r.width, height: r.height },
+                dpi: undefined,
+                pixelSizeMm: r.pixelSizeMm,
+                onProgress: (p) => {
+                    // TODO: publish progress to model for UI display
+                },
+            };
             const inputHash = this.hashStage(i, f, current.value);
             const cached = this.getCached(rasterId, i, inputHash);
             if (cached) {
@@ -135,6 +142,19 @@ export class FilterChainController {
         return null;
     }
 
+    // Evaluate current filter chain to paths and add them as a new plot entity in world mm.
+    async bakePathsToEntity(rasterId: string): Promise<string | null> {
+        const r = this.model.getRasters().find(x => x.id === rasterId);
+        if (!r) return null;
+        const paths = await this.evaluateToPaths(rasterId);
+        if (!paths || paths.length === 0) return null;
+        const worldPaths: [number, number][][] = paths.map(p => p.map(([x, y]) => [r.x + x * r.pixelSizeMm, r.y + y * r.pixelSizeMm] as [number, number]));
+        const id = this.generateId('plot');
+        this.model.addEntity({ id, paths: worldPaths });
+        this.model.setSelectedEntityId(id);
+        return id;
+    }
+
     async evaluatePreview(rasterId: string): Promise<{ kind: FilterIoKind; value: any } | null> {
         const r = this.model.getRasters().find(x => x.id === rasterId);
         if (!r) return null;
@@ -148,7 +168,14 @@ export class FilterChainController {
             const def = this.registry.get(f.defId);
             if (!def) return null;
             if (!def.inputKinds.includes(current.kind as any)) return null;
-            const ctx: FilterContext = { rasterSize: { width: r.width, height: r.height }, dpi: undefined, pixelSizeMm: r.pixelSizeMm };
+            const ctx: FilterContext = {
+                rasterSize: { width: r.width, height: r.height },
+                dpi: undefined,
+                pixelSizeMm: r.pixelSizeMm,
+                onProgress: (p) => {
+                    // TODO: publish progress to model for UI display
+                },
+            };
             const inputHash = this.hashStage(i, f, current.value);
             const cached = this.getCached(rasterId, i, inputHash);
             if (cached) {

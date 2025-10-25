@@ -16,6 +16,22 @@ export interface Raster {
     previewIndex?: number | null;
 }
 
+// Unified layer abstraction (derived from legacy rasters/entities for now)
+export interface Layer {
+    id: string; // 'r:<rasterId>' or 'e:<entityId>'
+    kind: 'raster' | 'paths';
+    x: number;
+    y: number;
+    // Raster-only
+    width?: number;
+    height?: number;
+    pixelSizeMm?: number;
+    filters?: import('../../types').FilterInstance[];
+    previewIndex?: number | null;
+    // Paths-only
+    paths?: [number, number][][];
+}
+
 interface ViewportState {
     zoom: number;
     panX: number;
@@ -25,6 +41,7 @@ interface ViewportState {
 interface SelectionState {
     selectedEntityId: string | null;
     selectedRasterId: string | null;
+    selectedLayerId?: string | null;
     isDraggingViewport: boolean;
     isDraggingEntity: boolean;
     isDraggingRaster: boolean;
@@ -200,6 +217,7 @@ export class PlotModel {
         if (id !== null) {
             this.state.selection.selectedRasterId = null;
         }
+        this.state.selection.selectedLayerId = id ? `e:${id}` : (this.state.selection.selectedRasterId ? `r:${this.state.selection.selectedRasterId}` : null);
         this.notify();
     }
 
@@ -276,6 +294,7 @@ export class PlotModel {
         if (id !== null) {
             this.state.selection.selectedEntityId = null;
         }
+        this.state.selection.selectedLayerId = id ? `r:${id}` : (this.state.selection.selectedEntityId ? `e:${this.state.selection.selectedEntityId}` : null);
         this.notify();
     }
 
@@ -291,11 +310,15 @@ export class PlotModel {
     // === Complete State ===
 
     getState(): Readonly<PlotState> {
+        const selection = { ...this.state.selection };
+        if (!selection.selectedLayerId) {
+            selection.selectedLayerId = selection.selectedRasterId ? `r:${selection.selectedRasterId}` : (selection.selectedEntityId ? `e:${selection.selectedEntityId}` : null);
+        }
         return {
             entities: [...this.state.entities],
             rasters: [...this.state.rasters],
             viewport: { ...this.state.viewport },
-            selection: { ...this.state.selection },
+            selection,
             render: { ...this.state.render }
         };
     }
@@ -360,6 +383,7 @@ export class PlotModel {
                 selection: {
                     selectedEntityId: raw?.selection?.selectedEntityId ?? null,
                     selectedRasterId: raw?.selection?.selectedRasterId ?? null,
+                    selectedLayerId: raw?.selection?.selectedLayerId ?? (raw?.selection?.selectedRasterId ? `r:${raw?.selection?.selectedRasterId}` : (raw?.selection?.selectedEntityId ? `e:${raw?.selection?.selectedEntityId}` : null)),
                     isDraggingViewport: false,
                     isDraggingEntity: false,
                     isDraggingRaster: false,
@@ -415,6 +439,60 @@ export class PlotModel {
             }
         }
         return new Uint8ClampedArray();
+    }
+
+    // ===== Unified Layer API (derived view) =====
+    getLayers(): Layer[] {
+        const layers: Layer[] = [];
+        for (const r of this.state.rasters) {
+            layers.push({ id: `r:${r.id}`, kind: 'raster', x: r.x, y: r.y, width: r.width, height: r.height, pixelSizeMm: r.pixelSizeMm, filters: r.filters, previewIndex: r.previewIndex });
+        }
+        for (const e of this.state.entities) {
+            layers.push({ id: `e:${e.id}`, kind: 'paths', x: 0, y: 0, paths: e.paths });
+        }
+        return layers;
+    }
+
+    getSelectedLayerId(): string | null {
+        const sel = this.state.selection;
+        if (sel.selectedLayerId != null) return sel.selectedLayerId;
+        if (sel.selectedRasterId) return `r:${sel.selectedRasterId}`;
+        if (sel.selectedEntityId) return `e:${sel.selectedEntityId}`;
+        return null;
+    }
+
+    setSelectedLayerId(layerId: string | null): void {
+        this.state.selection.selectedLayerId = layerId;
+        if (layerId == null) {
+            this.state.selection.selectedRasterId = null;
+            this.state.selection.selectedEntityId = null;
+        } else if (layerId.startsWith('r:')) {
+            this.state.selection.selectedRasterId = layerId.slice(2);
+            this.state.selection.selectedEntityId = null;
+        } else if (layerId.startsWith('e:')) {
+            this.state.selection.selectedEntityId = layerId.slice(2);
+            this.state.selection.selectedRasterId = null;
+        }
+        this.notify();
+    }
+
+    getLayerBounds(layer: Layer): { x: number; y: number; width: number; height: number } {
+        if (layer.kind === 'raster') {
+            const widthMm = (layer.width ?? 0) * (layer.pixelSizeMm ?? 1);
+            const heightMm = (layer.height ?? 0) * (layer.pixelSizeMm ?? 1);
+            return { x: layer.x, y: layer.y, width: widthMm, height: heightMm };
+        }
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const path of (layer.paths ?? [])) {
+            for (const [x, y] of path) {
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+            }
+        }
+        if (!isFinite(minX) || !isFinite(minY)) return { x: 0, y: 0, width: 0, height: 0 };
+        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
     }
 }
 

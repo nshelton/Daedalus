@@ -37,7 +37,14 @@ export class PersistenceController {
         try {
             const state: AppModelState = {
                 version: 1,
-                plot: this.models.plot.getState(),
+                plot: (() => {
+                    const s = this.models.plot.getState() as any;
+                    // Add derived layers view for forward compatibility
+                    if (typeof (this.models.plot as any).getLayers === 'function') {
+                        s.layers = (this.models.plot as any).getLayers();
+                    }
+                    return s;
+                })(),
             };
             const json = JSON.stringify(state, this.replacer, 0);
             await window.electronAPI.saveAppModel(json);

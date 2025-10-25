@@ -55,7 +55,12 @@ export class FilterPanelView {
         }
         root.innerHTML = '';
 
-        const selectedRasterId = this.model.getSelectedRasterId ? this.model.getSelectedRasterId() : null;
+        // Prefer unified layer selection; fall back to legacy raster selection
+        let selectedRasterId: string | null = null;
+        const selLayerId = (this.model as any).getSelectedLayerId ? (this.model as any).getSelectedLayerId() as string | null : null;
+        if (selLayerId && selLayerId.startsWith('r:')) selectedRasterId = selLayerId.slice(2);
+        if (!selectedRasterId && this.model.getSelectedRasterId) selectedRasterId = this.model.getSelectedRasterId();
+
         if (!selectedRasterId) {
             root.textContent = 'Select a raster to edit filters';
             return;
@@ -85,6 +90,21 @@ export class FilterPanelView {
                 this.drawHistogram(canvas, bins);
             }).catch(() => { });
         }
+
+        // Progress bar (future: driven by model progress state)
+        const prog = document.createElement('div');
+        prog.style.height = '6px';
+        prog.style.background = '#111';
+        prog.style.border = '1px solid #333';
+        prog.style.borderRadius = '3px';
+        prog.style.overflow = 'hidden';
+        prog.style.margin = '6px 0 8px 0';
+        const bar = document.createElement('div');
+        bar.style.height = '100%';
+        bar.style.width = '0%';
+        bar.style.background = '#3b82f6';
+        prog.appendChild(bar);
+        root.appendChild(prog);
 
         const header = document.createElement('div');
         header.textContent = 'Filters';
@@ -117,6 +137,34 @@ export class FilterPanelView {
             }
         };
         header.appendChild(addBtn);
+
+        // Bake Paths button
+        const bakeBtn = document.createElement('button');
+        bakeBtn.textContent = 'Bake Paths';
+        bakeBtn.title = 'Evaluate chain to paths and add as plot entity';
+        bakeBtn.style.background = 'transparent';
+        bakeBtn.style.border = '1px solid #555';
+        bakeBtn.style.color = '#eee';
+        bakeBtn.style.fontSize = '12px';
+        bakeBtn.style.lineHeight = '1';
+        bakeBtn.style.padding = '2px 6px';
+        bakeBtn.style.float = 'right';
+        bakeBtn.style.cursor = 'pointer';
+        bakeBtn.style.margin = '0 6px 8px 0';
+        bakeBtn.style.borderRadius = '4px';
+        bakeBtn.onmouseenter = () => { bakeBtn.style.background = '#333'; };
+        bakeBtn.onmouseleave = () => { bakeBtn.style.background = 'transparent'; };
+        bakeBtn.onclick = async (ev) => {
+            ev.stopPropagation();
+            try {
+                const id = await this.chain.bakePathsToEntity(raster.id);
+                if (!id) alert('No paths produced by the current filter chain.');
+            } catch (e) {
+                console.error('Bake paths failed', e);
+                alert('Bake paths failed');
+            }
+        };
+        header.appendChild(bakeBtn);
         root.appendChild(header);
 
         const list = document.createElement('div');

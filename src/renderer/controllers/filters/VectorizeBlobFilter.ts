@@ -1,4 +1,4 @@
-import type { FilterDefinition } from '../../../types';
+import type { FilterDefinition, FilterContext } from '../../../types';
 
 type Params = { tolerance: number; turdSize: number };
 
@@ -21,7 +21,7 @@ function rdp(points: [number, number][], eps: number): [number, number][] {
     return left.slice(0, -1).concat(right);
 }
 
-function bitmapToContours(img: ImageData, params: Params): [number, number][][] {
+async function bitmapToContours(img: ImageData, params: Params, ctx?: FilterContext): Promise<[number, number][][]> {
     const { width, height, data } = img;
     const idxOf = (x: number, y: number) => y * width + x;
     // Precompute binary mask once for speed
@@ -44,6 +44,13 @@ function bitmapToContours(img: ImageData, params: Params): [number, number][][] 
             if (visited[idx]) continue;
             visited[idx] = 1;
             if (!black[idx]) continue;
+
+            // Periodically yield and report progress to avoid blocking UI on large images
+            if (((x & 127) === 0) && ((y & 7) === 0)) {
+                try { ctx?.onProgress?.(Math.min(0.99, (y * width + x) / (width * height))); } catch { }
+                await new Promise(r => setTimeout(r, 0));
+                if (ctx?.abortSignal?.aborted) return paths;
+            }
 
             // Collect component by BFS
             const q: number[] = [idx];
@@ -151,6 +158,7 @@ function bitmapToContours(img: ImageData, params: Params): [number, number][][] 
             if (simplified.length >= 3) paths.push(simplified);
         }
     }
+    try { ctx?.onProgress?.(1); } catch { }
     return paths;
 }
 
@@ -165,10 +173,10 @@ export const VectorizeFilter: FilterDefinition<Params, 'bitmap', 'paths'> = {
         { key: 'tolerance', label: 'Tolerance', type: 'number', min: 0, max: 10, step: 0.5 },
         { key: 'turdSize', label: 'Min Area', type: 'number', min: 0, max: 10000, step: 1 }
     ],
-    apply(input, params) {
+    async apply(input, params, ctx) {
         const src = input as ImageData;
-        const paths = bitmapToContours(src, params);
-        return paths;
+        const paths = await bitmapToContours(src, params, ctx);
+        return paths as any;
     }
 };
 

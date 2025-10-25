@@ -100,15 +100,8 @@ export class CanvasView {
         // Draw A3 paper
         this.drawA3Paper(zoom, ctx);
 
-        // Draw rasters first (with filter preview if available)
-        this.drawRasters(ctx);
-
-        // Draw entities
-        const entities = this.plotModel.getEntities();
-        const selectedEntityId = this.plotModel.getSelectedEntityId();
-        entities.forEach(entity => {
-            this.drawEntity(entity, entity.id === selectedEntityId, zoom, ctx);
-        });
+        // Draw layers (raster or paths) in a unified pass
+        this.drawLayers(ctx);
 
         ctx.restore();
 
@@ -264,6 +257,132 @@ export class CanvasView {
                 }
             }
             ctx.restore();
+        }
+    }
+
+    private async drawLayers(ctx: CanvasRenderingContext2D): Promise<void> {
+        const layers = (this.plotModel as any).getLayers ? (this.plotModel as any).getLayers() as any[] : null;
+        if (!layers) {
+            // Fallback to legacy rendering
+            this.drawRasters(ctx);
+            const entities = this.plotModel.getEntities();
+            const selectedEntityId = this.plotModel.getSelectedEntityId();
+            const zoom = this.plotModel.getZoom();
+            entities.forEach(entity => this.drawEntity(entity, entity.id === selectedEntityId, zoom, ctx));
+            return;
+        }
+
+        // Render back-to-front as-is (entities appended after rasters in getLayers)
+        const selectedLayerId = (this.plotModel as any).getSelectedLayerId ? (this.plotModel as any).getSelectedLayerId() as string | null : null;
+
+        for (const layer of layers) {
+            if (layer.kind === 'raster') {
+                // Reuse existing raster preview path, but ensure outline in path-preview mode
+                // Temporarily construct a mock Raster to call existing codepaths
+                const r = this.plotModel.getRasters().find(x => `r:${x.id}` === layer.id);
+                if (r) {
+                    // Draw with filter preview logic
+                    // Inline minimal draw mirroring drawRasters for this raster only
+                    let bmp = this.rasterBitmapCache.get(r.id);
+                    let baseKey = r.id;
+                    if (this.filterChain) {
+                        this.filterChain.evaluatePreview(r.id).then(preview => {
+                            if (!preview) return;
+                            if (preview.kind === 'paths') {
+                                this.rasterPathPreview.set(r.id, preview.value as any);
+                                this.rasterBitmapCache.delete(r.id + ':preview');
+                            } else {
+                                this.rasterPathPreview.delete(r.id);
+                                const imageData = preview.value as ImageData;
+                                (async () => {
+                                    const gray = new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
+                                    const d = gray.data;
+                                    for (let i = 0; i < d.length; i += 4) {
+                                        const rr = d[i], gg = d[i + 1], bb = d[i + 2];
+                                        const v = Math.round(0.299 * rr + 0.587 * gg + 0.114 * bb);
+                                        d[i] = v; d[i + 1] = v; d[i + 2] = v; d[i + 3] = (v === 255) ? 0 : 255;
+                                    }
+                                    const cv = document.createElement('canvas');
+                                    cv.width = gray.width; cv.height = gray.height;
+                                    const c2 = cv.getContext('2d')!;
+                                    c2.putImageData(gray, 0, 0);
+                                    const b = await createImageBitmap(cv);
+                                    this.rasterBitmapCache.set(r.id + ':preview', b);
+                                })();
+                            }
+                        }).catch(() => { });
+                        const p = this.rasterPathPreview.get(r.id);
+                        if (p && p.length) {
+                            this.drawPathsForRaster(ctx, r, p);
+                            // selection outline
+                            if (selectedLayerId === `r:${r.id}`) {
+                                ctx.save();
+                                const zoomSel = this.plotModel.getZoom();
+                                const widthMmSel = r.width * r.pixelSizeMm;
+                                const heightMmSel = r.height * r.pixelSizeMm;
+                                ctx.strokeStyle = '#22c55e';
+                                ctx.lineWidth = 2 / zoomSel;
+                                ctx.strokeRect(r.x, -(r.y + heightMmSel), widthMmSel, heightMmSel);
+                                const handleSize = 8 / zoomSel;
+                                ctx.fillStyle = '#22c55e';
+                                const nw = { x: r.x, y: r.y + heightMmSel };
+                                const ne = { x: r.x + widthMmSel, y: r.y + heightMmSel };
+                                const sw = { x: r.x, y: r.y };
+                                const se = { x: r.x + widthMmSel, y: r.y };
+                                for (const c of [nw, ne, sw, se]) ctx.fillRect(c.x - handleSize / 2, -c.y - handleSize / 2, handleSize, handleSize);
+                                ctx.restore();
+                            }
+                            continue;
+                        }
+                        const pbmp = this.rasterBitmapCache.get(r.id + ':preview');
+                        if (pbmp) { bmp = pbmp; baseKey = r.id + ':preview'; }
+                    }
+                    if (!bmp) { this.ensureRasterBitmap(r.id); }
+                    if (bmp) {
+                        const widthMm = r.width * r.pixelSizeMm;
+                        const heightMm = r.height * r.pixelSizeMm;
+                        const zoom = this.plotModel.getZoom();
+                        const screenPxPerSrcPx = r.pixelSizeMm * zoom;
+                        let level = 0;
+                        if (screenPxPerSrcPx < 0.5) {
+                            level = Math.min(8, Math.max(1, Math.floor(Math.log2(1 / screenPxPerSrcPx))));
+                            const mipKey = baseKey + '@' + level;
+                            const mipBmp = this.rasterBitmapCache.get(mipKey);
+                            if (mipBmp) {
+                                bmp = mipBmp;
+                            } else {
+                                if (baseKey.endsWith(':preview')) this.ensureBitmapMipmap(baseKey, level); else this.ensureRasterMipmap(r.id, level);
+                            }
+                        }
+                        ctx.save();
+                        const smoothing = screenPxPerSrcPx < 1;
+                        (ctx as any).imageSmoothingEnabled = smoothing;
+                        if ('imageSmoothingQuality' in ctx) (ctx as any).imageSmoothingQuality = smoothing ? 'high' : 'low';
+                        ctx.drawImage(bmp, r.x, -(r.y + heightMm), widthMm, heightMm);
+                        if (selectedLayerId === `r:${r.id}`) {
+                            ctx.strokeStyle = '#22c55e';
+                            ctx.lineWidth = 2 / this.plotModel.getZoom();
+                            ctx.strokeRect(r.x, -(r.y + heightMm), widthMm, heightMm);
+                            const handleSize = 8 / this.plotModel.getZoom();
+                            ctx.fillStyle = '#22c55e';
+                            const nw = { x: r.x, y: r.y + heightMm };
+                            const ne = { x: r.x + widthMm, y: r.y + heightMm };
+                            const sw = { x: r.x, y: r.y };
+                            const se = { x: r.x + widthMm, y: r.y };
+                            for (const c of [nw, ne, sw, se]) ctx.fillRect(c.x - handleSize / 2, -c.y - handleSize / 2, handleSize, handleSize);
+                        }
+                        ctx.restore();
+                    }
+                }
+            } else if (layer.kind === 'paths') {
+                // Draw path layer
+                const entityId = layer.id.startsWith('e:') ? layer.id.slice(2) : layer.id;
+                const entity = this.plotModel.getEntity(entityId);
+                if (entity) {
+                    const zoom = this.plotModel.getZoom();
+                    this.drawEntity(entity, selectedLayerId === layer.id, zoom, ctx);
+                }
+            }
         }
     }
 
@@ -570,6 +689,7 @@ export class CanvasView {
         const clickedRaster = this.getRasterAtScreenPosition(mouseX, mouseY);
         if (clickedRaster) {
             this.plotModel.setSelectedRasterId(clickedRaster.id);
+            this.plotModel.setSelectedLayerId?.(`r:${clickedRaster.id}`);
             this.plotModel.setDraggingRaster(true);
             return;
         }
@@ -578,11 +698,13 @@ export class CanvasView {
         const clickedEntity = this.getEntityAtPosition(worldX, worldY);
         if (clickedEntity) {
             this.plotModel.setSelectedEntityId(clickedEntity.id);
+            this.plotModel.setSelectedLayerId?.(`e:${clickedEntity.id}`);
             this.plotModel.setDraggingEntity(true);
         } else {
             // Left-click empty space: clear selection and pan the viewport
             this.plotModel.setSelectedEntityId(null);
             if (this.plotModel.setSelectedRasterId) this.plotModel.setSelectedRasterId(null);
+            this.plotModel.setSelectedLayerId?.(null);
             this.plotModel.setDraggingViewport(true);
         }
     }

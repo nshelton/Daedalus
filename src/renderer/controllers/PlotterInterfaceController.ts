@@ -31,22 +31,41 @@ export class PlotterInterfaceController {
 
     public async onPlotClick(): Promise<void> {
         try {
-            const entities = this.plotModel.getEntities();
-            let paths = this.entitiesToPaths(entities);
-
-            // Include filter-chain path outputs from rasters (transformed to world mm)
-            const rasters = this.plotModel.getRasters();
-            if (this.filterChain) {
-                for (const r of rasters) {
-                    try {
-                        const chainPaths = await this.filterChain.evaluateToPaths(r.id);
-                        if (chainPaths && chainPaths.length) {
-                            // Map pixel coordinates to world mm and offset by raster position
-                            const mapped = chainPaths.map(p => p.map(([x, y]) => [r.x + x * r.pixelSizeMm, r.y + y * r.pixelSizeMm] as [number, number]));
-                            paths.push(...mapped);
+            let paths: [number, number][][] = [];
+            const layers = (this.plotModel as any).getLayers ? (this.plotModel as any).getLayers() as any[] : null;
+            if (layers) {
+                // Flatten layers: path layers directly; raster layers via filter-chain evaluation
+                for (const layer of layers) {
+                    if (layer.kind === 'paths' && Array.isArray(layer.paths)) {
+                        for (const p of layer.paths) if (p.length) paths.push(p.map(([x, y]: [number, number]) => [x, y] as [number, number]));
+                    } else if (layer.kind === 'raster' && this.filterChain) {
+                        const r = this.plotModel.getRasters().find(x => `r:${x.id}` === layer.id);
+                        if (!r) continue;
+                        try {
+                            const chainPaths = await this.filterChain.evaluateToPaths(r.id);
+                            if (chainPaths && chainPaths.length) {
+                                const mapped = chainPaths.map(p => p.map(([x, y]) => [r.x + x * r.pixelSizeMm, r.y + y * r.pixelSizeMm] as [number, number]));
+                                paths.push(...mapped);
+                            }
+                        } catch {
+                            // ignore
                         }
-                    } catch {
-                        // ignore chain errors for robustness
+                    }
+                }
+            } else {
+                // Legacy fallback
+                const entities = this.plotModel.getEntities();
+                paths = this.entitiesToPaths(entities);
+                const rasters = this.plotModel.getRasters();
+                if (this.filterChain) {
+                    for (const r of rasters) {
+                        try {
+                            const chainPaths = await this.filterChain.evaluateToPaths(r.id);
+                            if (chainPaths && chainPaths.length) {
+                                const mapped = chainPaths.map(p => p.map(([x, y]) => [r.x + x * r.pixelSizeMm, r.y + y * r.pixelSizeMm] as [number, number]));
+                                paths.push(...mapped);
+                            }
+                        } catch { }
                     }
                 }
             }

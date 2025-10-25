@@ -35,6 +35,8 @@ export interface FilterContext {
   rasterSize: { width: number; height: number };
   dpi?: number;
   pixelSizeMm?: number;
+  onProgress?: (progress01: number) => void;
+  abortSignal?: AbortSignal;
 }
 
 export interface FilterDefinition<P, In extends FilterIoKind, Out extends FilterIoKind> {
