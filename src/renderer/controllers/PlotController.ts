@@ -20,7 +20,6 @@ export class PlotController {
     private readonly model: PlotModel;
     private readonly viewport: ViewportController;
     private readonly canvas: HTMLCanvasElement;
-    private readonly onChange?: () => void;
 
     // Selection & interaction state
     private selectedEntityId: string | null = null;
@@ -39,7 +38,6 @@ export class PlotController {
         this.model = model;
         this.viewport = viewport;
         this.canvas = canvas;
-        this.onChange = options.onChange;
         this.gridEnabled = options.gridEnabled ?? true;
         this.gridSizeMm = options.gridSizeMm ?? 10;
 
@@ -72,7 +70,7 @@ export class PlotController {
         const entity: PlotEntity = { id: this.generateId('circle'), paths: [path] };
         this.model.addEntity(entity);
         this.selectedEntityId = entity.id;
-        this.requestRender();
+        // this.requestRender();
         return entity.id;
     }
 
@@ -86,7 +84,7 @@ export class PlotController {
         const entity: PlotEntity = { id: this.generateId('rect'), paths: [path] };
         this.model.addEntity(entity);
         this.selectedEntityId = entity.id;
-        this.requestRender();
+        // this.requestRender();
         return entity.id;
     }
 
@@ -95,7 +93,7 @@ export class PlotController {
         const entity: PlotEntity = { id: this.generateId('path'), paths: nonEmpty };
         this.model.addEntity(entity);
         this.selectedEntityId = entity.id;
-        this.requestRender();
+        // this.requestRender();
         return entity.id;
     }
 
@@ -103,7 +101,7 @@ export class PlotController {
         if (!this.selectedEntityId) return;
         this.model.removeEntity(this.selectedEntityId);
         this.selectedEntityId = null;
-        this.requestRender();
+        // this.requestRender();
     }
 
     // ===== Drag operations =====
@@ -146,7 +144,7 @@ export class PlotController {
             this.viewport.adjustPan(dx, dy);
             this.dragStartScreenX = screenX;
             this.dragStartScreenY = screenY;
-            this.requestRender();
+            // this.requestRender();
             return;
         }
 
@@ -160,7 +158,7 @@ export class PlotController {
             this.model.updateEntity(entity.id, { paths: entity.paths });
             this.dragStartScreenX = screenX;
             this.dragStartScreenY = screenY;
-            this.requestRender();
+            // this.requestRender();
             return;
         }
 
@@ -169,7 +167,7 @@ export class PlotController {
             if (!entity) return;
             this.applyResize(entity, this.activeResizeHandle, worldX, worldY);
             this.model.updateEntity(entity.id, { paths: entity.paths });
-            this.requestRender();
+            // this.requestRender();
             return;
         }
     }
@@ -195,7 +193,7 @@ export class PlotController {
         const [worldX, worldY] = this.screenToWorld(screenX, screenY);
         this.applyResize(entity, this.activeResizeHandle, worldX, worldY);
         this.model.updateEntity(entity.id, { paths: entity.paths });
-        this.requestRender();
+        // this.requestRender();
     }
 
     endResize(): void {
@@ -206,17 +204,17 @@ export class PlotController {
     // ===== Viewport operations =====
     pan(deltaScreenX: number, deltaScreenY: number): void {
         this.viewport.adjustPan(deltaScreenX, deltaScreenY);
-        this.requestRender();
+        // this.requestRender();
     }
 
     zoom(delta: number, centerScreenX: number, centerScreenY: number): void {
         this.viewport.adjustZoom(delta, centerScreenX, centerScreenY);
-        this.requestRender();
+        // this.requestRender();
     }
 
     resetView(): void {
         this.viewport.reset();
-        this.requestRender();
+        // this.requestRender();
     }
 
     // ===== Selection =====
@@ -224,24 +222,24 @@ export class PlotController {
         const [worldX, worldY] = this.screenToWorld(screenX, screenY);
         const entity = this.getEntityAt(worldX, worldY);
         this.selectedEntityId = entity ? entity.id : null;
-        this.requestRender();
+        // this.requestRender();
         return this.selectedEntityId;
     }
 
     clearSelection(): void {
         this.selectedEntityId = null;
-        this.requestRender();
+        // this.requestRender();
     }
 
     // ===== Grid =====
     toggleGrid(): void {
         this.gridEnabled = !this.gridEnabled;
-        this.requestRender();
+        // this.requestRender();
     }
 
     setGridSize(sizeMm: number): void {
         this.gridSizeMm = Math.max(1, Math.round(sizeMm));
-        this.requestRender();
+        // this.requestRender();
     }
 
     // ===== Test pattern =====
@@ -327,9 +325,9 @@ export class PlotController {
         document.addEventListener('keydown', this.handleKeyDown);
     }
 
-    private requestRender(): void {
-        if (this.onChange) this.onChange();
-    }
+    // private requestRender(): void {
+    //     if (this.onChange) this.onChange();
+    // }
 
     private screenToWorld(screenX: number, screenY: number): [number, number] {
         const [panX, panY] = this.viewport.getPan();

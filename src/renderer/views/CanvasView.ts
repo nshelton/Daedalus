@@ -3,6 +3,7 @@ import type { PlotEntity, Raster } from "../models/PlotModel.js";
 import { RasterUtils } from "../RasterUtils.js";
 import { PathTools } from "../PathTools.js";
 import { ContextMenuController } from "../controllers/ContextMenuController.js";
+import FpsStats from './FpsStats.js';
 import FilterRegistry from '../controllers/FilterRegistry.js';
 import FilterChainController from '../controllers/FilterChainController.js';
 import type { PathLike } from '../../types';
@@ -25,6 +26,7 @@ export class CanvasView {
     // Preview evaluation throttling/state
     private previewInFlight: Set<string> = new Set();
     private lastPreviewKey: Map<string, string> = new Map();
+    private fpsStats?: FpsStats;
 
     constructor(plotModel: PlotModel, contextMenuController: ContextMenuController, _filterRegistry?: FilterRegistry, filterChain?: FilterChainController) {
         this.plotModel = plotModel;
@@ -56,6 +58,12 @@ export class CanvasView {
         // Hint: crisp when zooming in; we'll still switch dynamically per draw
         (this.canvas.style as any).imageRendering = 'auto';
 
+        // FPS overlay
+        if (!this.fpsStats) {
+            this.fpsStats = new FpsStats();
+            container.appendChild(this.fpsStats.dom);
+        }
+
         // Position viewport so (0,0) is bottom-left of A3 paper
         // Center the paper on screen with some padding
         const padding = 50;
@@ -84,6 +92,7 @@ export class CanvasView {
     }
 
     render(): void {
+        this.fpsStats?.begin();
         const ctx = this.canvas.getContext('2d')!;
 
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -107,6 +116,7 @@ export class CanvasView {
         this.drawLayers(ctx);
 
         ctx.restore();
+        this.fpsStats?.end();
 
         requestAnimationFrame(this.render.bind(this));
     }
@@ -128,7 +138,6 @@ export class CanvasView {
     }
 
     // drawRasters removed; rasters are rendered via drawLayers unified path
-
     private async drawLayers(ctx: CanvasRenderingContext2D): Promise<void> {
         const layers = (this.plotModel as any).getLayers ? (this.plotModel as any).getLayers() as any[] : null;
         if (!layers) return; // layers API is required now
@@ -156,13 +165,17 @@ export class CanvasView {
                         const lastKey = this.lastPreviewKey.get(r.id);
                         const shouldEvaluate = previewKey !== lastKey && !this.previewInFlight.has(r.id);
                         if (shouldEvaluate) {
+                            console.log('evaluating preview', r.id);
                             this.previewInFlight.add(r.id);
                             this.filterChain.evaluatePreview(r.id).then(preview => {
                                 if (!preview) return;
+                                console.log('preview', preview.kind);
                                 if (preview.kind === 'paths') {
+                                    console.log('setting path preview', r.id);
                                     this.rasterPathPreview.set(r.id, preview.value as any);
                                     this.rasterBitmapCache.delete(r.id + ':preview');
                                 } else {
+                                    console.log('setting bitmap preview', r.id);
                                     this.rasterPathPreview.delete(r.id);
                                     const imageData = preview.value as ImageData;
                                     (async () => {
@@ -736,7 +749,6 @@ export class CanvasView {
             }
         }
     }
-
 
     screenToWorld(screenX: number, screenY: number): [number, number] {
         // Convert screen to plotter coordinates (0,0 at bottom-left)

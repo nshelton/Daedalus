@@ -15,6 +15,8 @@ import { VectorizeFilter } from './controllers/filters/VectorizeBlobFilter.js';
 import { LevelsFilter } from './controllers/filters/LevelsFilter.js';
 import { SimplifyPathsFilter } from './controllers/filters/SimplifyPaths.js';
 import { SmoothPathsFilter } from './controllers/filters/SmoothPathsFilter.js';
+import { LineHatchFilter } from './controllers/filters/LineHatchFilter.js';
+import { DownsampleFilter } from './controllers/filters/DownsampleFilter.js';
 import HistogramController from './controllers/HistogramController.js';
 
 // Model
@@ -32,6 +34,8 @@ filterRegistry.register(VectorizeFilter);
 filterRegistry.register(LevelsFilter);
 filterRegistry.register(SimplifyPathsFilter);
 filterRegistry.register(SmoothPathsFilter);
+filterRegistry.register(LineHatchFilter);
+filterRegistry.register(DownsampleFilter);
 
 const filterChainController = new FilterChainController(plotModel, filterRegistry);
 const histogramController = new HistogramController(plotModel, filterRegistry, filterChainController);

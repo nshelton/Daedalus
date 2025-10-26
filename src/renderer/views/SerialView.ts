@@ -19,7 +19,7 @@ export class SerialView {
         panel.id = 'serial-diagnostics';
         panel.style.position = 'fixed';
         panel.style.right = '16px';
-        panel.style.top = '16px';
+        panel.style.top = '60px';
         panel.style.zIndex = '9999';
         panel.style.background = 'rgba(0,0,0,0.5)';
         panel.style.borderRadius = '4px';
