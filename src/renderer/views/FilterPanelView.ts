@@ -403,7 +403,7 @@ export class FilterPanelView {
         }
     }
 
-    private openAddMenu(root: HTMLElement, rasterId: string): void {
+    private openAddMenu(_root: HTMLElement, rasterId: string): void {
         // Build unique list of filters that can take raster/bitmap/paths
         const inRaster = this.registry.listByInput('raster');
         const inBitmap = this.registry.listByInput('bitmap');
@@ -417,7 +417,7 @@ export class FilterPanelView {
         });
 
         const menu = document.createElement('div');
-        menu.style.position = 'absolute';
+        menu.style.position = 'fixed';
         menu.style.background = '#111';
         menu.style.border = '1px solid #444';
 
@@ -431,12 +431,7 @@ export class FilterPanelView {
         menu.style.overflow = 'auto';
         menu.style.zIndex = '1000';
 
-        // Position under the (+) button, relative to root
-        const parentRect = root.getBoundingClientRect();
-        const anchor = this.addMenuAnchorEl;
-        const anchorRect = anchor ? anchor.getBoundingClientRect() : null;
-        let top = anchorRect ? (anchorRect.bottom - parentRect.top + 4) : 28;
-        let left = anchorRect ? (anchorRect.left - parentRect.left) : 0;
+        // Center the menu in the viewport for better visibility
 
         unique.forEach(def => {
             const btn = document.createElement('button');
@@ -458,15 +453,17 @@ export class FilterPanelView {
             menu.appendChild(btn);
         });
 
-        root.appendChild(menu);
+        menu.style.visibility = 'hidden';
+        document.body.appendChild(menu);
 
-        // Keep menu within root bounds after it's in the DOM (to know its size)
-        const maxLeft = Math.max(0, root.clientWidth - menu.offsetWidth - 4);
-        const maxTop = Math.max(0, root.clientHeight - menu.offsetHeight - 4);
-        if (left > maxLeft) left = maxLeft;
-        if (top > maxTop) top = maxTop;
-        menu.style.left = `${left}px`;
-        menu.style.top = `${top}px`;
+        // After it's in the DOM, compute centered position
+        const vw = document.documentElement.clientWidth;
+        const vh = document.documentElement.clientHeight;
+        const centeredLeft = Math.max(0, Math.floor((vw - menu.offsetWidth) / 2));
+        const centeredTop = Math.max(0, Math.floor((vh - menu.offsetHeight) / 2));
+        menu.style.left = `${centeredLeft}px`;
+        menu.style.top = `${centeredTop}px`;
+        menu.style.visibility = 'visible';
         this.addMenuEl = menu;
         this.addMenuOpen = true;
 

@@ -86,6 +86,18 @@ function saveWindowState(window: BrowserWindow): void {
 function createWindow(): void {
   const state = loadWindowState();
 
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+  } else {
+    app.on('second-instance', () => {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (win) {
+        if (win.isMinimized()) win.restore();
+        win.focus();
+      }
+    });
+  }
+
   mainWindow = new BrowserWindow({
     x: state.x,
     y: state.y,

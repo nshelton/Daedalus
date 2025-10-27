@@ -4,8 +4,10 @@
   "description": "Modern Electron application for USB serial plotting",
   "main": "dist/main.js",
   "scripts": {
-    "build:ts": "tsc -p tsconfig.main.json && tsc -p tsconfig.renderer.json && node -e \"const fs=require('fs');const path=require('path');if(!fs.existsSync('dist/renderer'))fs.mkdirSync('dist/renderer',{recursive:true});fs.copyFileSync('dist-renderer/renderer.js','dist/renderer.js');fs.copyFileSync('dist-renderer/Font.js','dist/Font.js');\"",
-    "prebuild": "npm run build:ts",
+    "build:ts": "tsc -p tsconfig.main.json && tsc -p tsconfig.renderer.json",
+    "build:wasm": "node -e \"require('fs').mkdirSync('dist/native',{recursive:true})\" && emcc native/subdivide/subdivide.cpp -O3 -msimd128 -s WASM=1 -s MODULARIZE=1 -s EXPORT_ES6=1 -s ALLOW_MEMORY_GROWTH=1 -s EXPORTED_FUNCTIONS=['_subdivide_path','_malloc','_free'] -o dist/native/subdivide.mjs",
+    "prestart": "npm run build:wasm",
+    "prebuild": "npm run build:ts && npm run build:wasm",
     "start": "npm run build:ts && electron .",
     "dev": "concurrently \"npm run watch:ts\" \"npm run watch:electron\"",
     "watch:ts": "concurrently \"tsc -p tsconfig.main.json --watch\" \"tsc -p tsconfig.renderer.json --watch\"",
